@@ -1,0 +1,519 @@
+:root {
+  color-scheme: dark;
+  font-family: "Aptos", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(82, 180, 255, 0.18), transparent 26%),
+    radial-gradient(circle at 82% 18%, rgba(62, 255, 210, 0.12), transparent 24%),
+    linear-gradient(180deg, #050816 0%, #09111f 52%, #05070f 100%);
+  color: #edf6ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  padding: 40px;
+  overflow: hidden;
+}
+
+.ambient {
+  position: absolute;
+  inset: auto;
+  width: 420px;
+  height: 420px;
+  border-radius: 999px;
+  filter: blur(64px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.ambient-a {
+  top: -120px;
+  right: -80px;
+  background: rgba(0, 187, 255, 0.14);
+}
+
+.ambient-b {
+  bottom: -140px;
+  left: -100px;
+  background: rgba(0, 255, 170, 0.1);
+}
+
+.hero,
+.focus-panel,
+.device-wall {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(167, 201, 255, 0.14);
+  background: linear-gradient(180deg, rgba(12, 19, 34, 0.88), rgba(7, 11, 22, 0.92));
+  backdrop-filter: blur(18px);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 28px;
+  padding: 28px;
+  border-radius: 28px;
+}
+
+.eyebrow,
+.panel-kicker,
+.metric-label,
+.meta-label {
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8ca5c9;
+  font-size: 12px;
+}
+
+.hero-copy h1,
+.panel-header h2 {
+  margin: 10px 0 12px;
+  font-family: "Aptos Display", "Segoe UI Variable Display", "Trebuchet MS", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.hero-copy h1 {
+  font-size: clamp(40px, 6vw, 76px);
+  line-height: 0.95;
+  max-width: 8ch;
+}
+
+.hero-copy p {
+  max-width: 54ch;
+  margin: 0;
+  color: #b8c8e4;
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.metric-card {
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(14, 21, 36, 0.75);
+  border: 1px solid rgba(123, 155, 204, 0.14);
+}
+
+.metric-card.accent {
+  box-shadow: inset 0 0 0 1px rgba(84, 201, 255, 0.08);
+}
+
+.metric-value {
+  margin-top: 18px;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.metric-hint {
+  margin-top: 10px;
+  color: #88a0c7;
+  font-size: 13px;
+}
+
+.dashboard-grid {
+  position: relative;
+  z-index: 1;
+  /* 整个主区域的两列布局，第一列就是左侧主设备面板宽度 */
+  display: grid;
+  grid-template-columns: 520px minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 24px;
+  align-items: start;
+}
+
+.focus-panel,
+.device-wall {
+  border-radius: 28px;
+  padding: 24px;
+}
+
+.focus-panel {
+  /* 左侧主设备面板本身的宽度 */
+  width: 520px;
+  justify-self: start;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.panel-header h2 {
+  font-size: 32px;
+}
+
+.panel-note {
+  margin-top: 6px;
+  color: #8ea4c8;
+  font-size: 13px;
+  text-align: right;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 11px;
+}
+
+.status-pill.compact {
+  min-width: 70px;
+  padding: 8px 12px;
+}
+
+.status-pill.online {
+  color: #5dffbd;
+  background: rgba(42, 104, 78, 0.28);
+}
+
+.status-pill.offline,
+.status-pill.unknown {
+  color: #ffcf7a;
+  background: rgba(109, 80, 28, 0.24);
+}
+
+.status-pill.unauthorized {
+  color: #ff8c8c;
+  background: rgba(122, 37, 37, 0.24);
+}
+
+.screen-frame {
+  position: relative;
+  margin-top: 22px;
+  /* 主画面容器的整体高度 */
+  min-height: 600px;
+  border-radius: 26px;
+  overflow: hidden;
+  border: 1px solid rgba(120, 160, 255, 0.18);
+  background:
+    linear-gradient(145deg, rgba(26, 36, 58, 0.98), rgba(8, 12, 20, 0.96)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.02) 0,
+      rgba(255, 255, 255, 0.02) 1px,
+      transparent 1px,
+      transparent 52px
+    );
+}
+
+.screen-glow {
+  position: absolute;
+  inset: auto 10% -10% 10%;
+  height: 160px;
+  border-radius: 999px;
+  background: rgba(53, 205, 255, 0.18);
+  filter: blur(60px);
+}
+
+.screen-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  /* 主画面内部可用高度，通常和 .screen-frame 一起调 */
+  min-height: 600px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0;
+}
+
+.video-stage {
+  overflow: hidden;
+}
+
+.device-video-shell {
+  position: relative;
+  /* 手机预览框尺寸，改这里就是直接改“视频框大小” */
+  width: 300px;
+  height: 600px;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(120, 160, 255, 0.2);
+  background:
+    linear-gradient(180deg, rgba(4, 7, 15, 0.88), rgba(9, 13, 22, 0.96));
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.device-video-shell.interactive {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.device-video {
+  display: block;
+  /* video 元素始终铺满手机预览框，实际外观受上面的 .device-video-shell 限制 */
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  background: #05070f;
+}
+
+.device-video.visible {
+  opacity: 1;
+}
+
+.video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(180deg, rgba(4, 7, 15, 0.4), rgba(4, 7, 15, 0.68));
+  transition: opacity 180ms ease;
+}
+
+.video-overlay.subtle {
+  background: linear-gradient(180deg, rgba(4, 7, 15, 0.06), rgba(4, 7, 15, 0.18));
+  pointer-events: none;
+}
+
+.video-overlay.subtle .screen-label,
+.video-overlay.subtle .screen-resolution {
+  opacity: 0;
+}
+
+.screen-label {
+  font-family: "Aptos Display", "Segoe UI Variable Display", sans-serif;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.screen-resolution {
+  margin-top: 12px;
+  color: #8ea5ca;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.device-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.control-toolbar {
+  margin-top: 18px;
+}
+
+.control-status {
+  min-height: 42px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(143, 176, 226, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: #d6e4ff;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.control-status.busy {
+  border-color: rgba(95, 234, 255, 0.28);
+  color: #f2f8ff;
+}
+
+.control-button-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.control-button {
+  border: 1px solid rgba(120, 160, 255, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(18, 27, 44, 0.92), rgba(9, 14, 25, 0.96));
+  color: #eff6ff;
+  padding: 12px 0;
+  letter-spacing: 0.04em;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.control-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(95, 234, 255, 0.42);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.meta-item {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(143, 176, 226, 0.12);
+}
+
+.meta-value {
+  margin-top: 10px;
+  color: #eff6ff;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.device-grid {
+  display: grid;
+  /* 设备卡片槽位尺寸，减小这里会让右侧设备墙更紧凑 */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.device-card {
+  /* 设备卡片本身的内边距 */
+  padding: 14px;
+  border: 1px solid rgba(135, 165, 216, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(18, 27, 44, 0.94), rgba(10, 15, 27, 0.94));
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.device-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(104, 210, 255, 0.42);
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.24);
+}
+
+.device-card.selected {
+  border-color: rgba(95, 234, 255, 0.78);
+  box-shadow:
+    0 18px 34px rgba(0, 0, 0, 0.26),
+    inset 0 0 0 1px rgba(95, 234, 255, 0.2);
+}
+
+.device-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.device-index {
+  color: #7c93b7;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+}
+
+.device-model {
+  margin-top: 16px;
+  font-family: "Aptos Display", "Segoe UI Variable Display", sans-serif;
+  font-size: 20px;
+  letter-spacing: -0.04em;
+}
+
+.device-serial {
+  margin-top: 6px;
+  color: #95aad0;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.device-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.device-details span {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #bfd1eb;
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .hero,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .focus-panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 18px;
+  }
+
+  .hero,
+  .focus-panel,
+  .device-wall {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .stats-grid,
+  .device-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .screen-frame,
+  .screen-content {
+    min-height: 400px;
+  }
+
+  .device-video-shell {
+    width: 200px;
+    height: 400px;
+  }
+}

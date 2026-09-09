@@ -1,0 +1,18 @@
+{
+  "name": "remote-phone-control",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "agent",
+    "web",
+    "relay"
+  ],
+  "scripts": {
+    "agent:devices": "npm run devices --workspace agent",
+    "agent:watch": "npm run dev --workspace agent",
+    "agent:server": "npm run dev --workspace agent",
+    "web:dev": "npm run dev --workspace web",
+    "relay:dev": "npm run dev --workspace relay",
+    "relay:start": "npm run start --workspace relay"
+  }
+}
