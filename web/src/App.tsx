@@ -196,6 +196,8 @@ export function App() {
       return;
     }
 
+    const streamKey = getDeviceKey(selectedDevice);
+
     streamSocketRef.current?.close();
     jmuxerRef.current?.destroy();
     jmuxerRef.current = new JMuxer({
@@ -219,11 +221,19 @@ export function App() {
     setStreamMessage(`正在连接 ${selectedDevice.serial}`);
 
     socket.addEventListener("open", () => {
+      if (streamSocketRef.current !== socket) {
+        return;
+      }
+
       setStreamState("live");
       setStreamMessage("视频流已连接");
     });
 
     socket.addEventListener("message", (event) => {
+      if (streamSocketRef.current !== socket) {
+        return;
+      }
+
       if (typeof event.data === "string") {
         const payload = JSON.parse(event.data) as {
           type: "stream-ready" | "stream-log" | "stream-error";
@@ -255,22 +265,34 @@ export function App() {
     });
 
     socket.addEventListener("close", () => {
+      if (streamSocketRef.current !== socket) {
+        return;
+      }
+
       setStreamState("idle");
       setStreamMessage("视频流已断开");
     });
 
     socket.addEventListener("error", () => {
+      if (streamSocketRef.current !== socket) {
+        return;
+      }
+
       setStreamState("error");
       setStreamMessage("视频流连接异常");
     });
 
     return () => {
+      if (streamSocketRef.current === socket) {
+        streamSocketRef.current = null;
+      }
       socket.close();
-      streamSocketRef.current = null;
-      jmuxerRef.current?.destroy();
-      jmuxerRef.current = null;
+      if (streamSocketRef.current === null) {
+        jmuxerRef.current?.destroy();
+        jmuxerRef.current = null;
+      }
     };
-  }, [selectedDevice?.serial]);
+  }, [selectedDeviceKey]);
 
   function sendInputCommand(command: DeviceInputCommand, options?: { silent?: boolean }): void {
     if (!selectedDevice) {
