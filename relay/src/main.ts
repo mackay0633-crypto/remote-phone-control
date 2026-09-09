@@ -102,12 +102,20 @@ interface AgentConnection {
   devices: DeviceInfo[];
 }
 
+interface StreamState {
+  viewers: Set<WebSocket>;
+  bootstrapChunks: Buffer[];
+  bootstrapBytes: number;
+  readyEvent?: StreamEventMessage;
+}
+
 const host = process.env.RELAY_HOST?.trim() || "0.0.0.0";
 const port = Number(process.env.RELAY_PORT ?? "5081");
+const STREAM_BOOTSTRAP_CACHE_LIMIT_BYTES = 512 * 1024;
 
 const agents = new Map<string, AgentConnection>();
 const viewerControlSockets = new Set<WebSocket>();
-const streamViewers = new Map<string, Set<WebSocket>>();
+const streamStates = new Map<string, StreamState>();
 
 const server = createServer((req, res) => {
   handleRequest(req, res);
@@ -295,31 +303,30 @@ viewerStreamWsServer.on("connection", (socket, req) => {
   }
 
   const key = getStreamKey(agentId, serial);
-  let viewers = streamViewers.get(key);
-  const shouldStart = !viewers || viewers.size === 0;
+  const streamState = getOrCreateStreamState(key);
+  const shouldStart = streamState.viewers.size === 0;
+  streamState.viewers.add(socket);
 
-  if (!viewers) {
-    viewers = new Set<WebSocket>();
-    streamViewers.set(key, viewers);
+  if (!shouldStart) {
+    replayBootstrapToViewer(socket, agentId, streamState);
   }
-  viewers.add(socket);
 
   if (shouldStart) {
     agent.socket.send(JSON.stringify({ type: "start-stream", serial } satisfies StartStreamMessage));
   }
 
   socket.on("close", () => {
-    const activeViewers = streamViewers.get(key);
-    if (!activeViewers) {
+    const activeStreamState = streamStates.get(key);
+    if (!activeStreamState) {
       return;
     }
 
-    activeViewers.delete(socket);
-    if (activeViewers.size > 0) {
+    activeStreamState.viewers.delete(socket);
+    if (activeStreamState.viewers.size > 0) {
       return;
     }
 
-    streamViewers.delete(key);
+    streamStates.delete(key);
     const activeAgent = agents.get(agentId);
     if (activeAgent && activeAgent.socket.readyState === WebSocket.OPEN) {
       activeAgent.socket.send(JSON.stringify({ type: "stop-stream", serial } satisfies StopStreamMessage));
@@ -374,12 +381,14 @@ function handleAgentBinary(agentId: string, rawMessage: WebSocket.RawData): void
 
   const serial = buffer.subarray(2, 2 + serialLength).toString("utf8");
   const chunk = buffer.subarray(2 + serialLength);
-  const viewers = streamViewers.get(getStreamKey(agentId, serial));
-  if (!viewers || viewers.size === 0) {
+  const streamState = streamStates.get(getStreamKey(agentId, serial));
+  if (!streamState || streamState.viewers.size === 0) {
     return;
   }
 
-  viewers.forEach((viewer) => {
+  cacheBootstrapChunk(streamState, chunk);
+
+  streamState.viewers.forEach((viewer) => {
     if (viewer.readyState === WebSocket.OPEN) {
       viewer.send(chunk, { binary: true });
     }
@@ -387,9 +396,15 @@ function handleAgentBinary(agentId: string, rawMessage: WebSocket.RawData): void
 }
 
 function broadcastStreamEvent(agentId: string, payload: StreamEventMessage): void {
-  const viewers = streamViewers.get(getStreamKey(agentId, payload.serial));
-  if (!viewers || viewers.size === 0) {
+  const streamState = streamStates.get(getStreamKey(agentId, payload.serial));
+  if (!streamState || streamState.viewers.size === 0) {
     return;
+  }
+
+  if (payload.type === "stream-ready") {
+    streamState.readyEvent = payload;
+    streamState.bootstrapChunks = [];
+    streamState.bootstrapBytes = 0;
   }
 
   const message = JSON.stringify({
@@ -397,7 +412,7 @@ function broadcastStreamEvent(agentId: string, payload: StreamEventMessage): voi
     agentId
   });
 
-  viewers.forEach((viewer) => {
+  streamState.viewers.forEach((viewer) => {
     if (viewer.readyState === WebSocket.OPEN) {
       viewer.send(message);
     }
@@ -440,24 +455,71 @@ function listDevices(): RelayDeviceInfo[] {
 }
 
 function closeStreamsForAgent(agentId: string, message: string): void {
-  Array.from(streamViewers.entries()).forEach(([key, viewers]) => {
+  Array.from(streamStates.entries()).forEach(([key, streamState]) => {
     if (!key.startsWith(`${agentId}::`)) {
       return;
     }
 
-    viewers.forEach((viewer) => {
+    streamState.viewers.forEach((viewer) => {
       if (viewer.readyState === WebSocket.OPEN) {
         viewer.send(JSON.stringify({ type: "stream-error", agentId, message }));
         viewer.close();
       }
     });
 
-    streamViewers.delete(key);
+    streamStates.delete(key);
   });
 }
 
 function getStreamKey(agentId: string, serial: string): string {
   return `${agentId}::${serial}`;
+}
+
+function getOrCreateStreamState(key: string): StreamState {
+  let streamState = streamStates.get(key);
+  if (streamState) {
+    return streamState;
+  }
+
+  streamState = {
+    viewers: new Set<WebSocket>(),
+    bootstrapChunks: [],
+    bootstrapBytes: 0
+  };
+  streamStates.set(key, streamState);
+  return streamState;
+}
+
+function replayBootstrapToViewer(viewer: WebSocket, agentId: string, streamState: StreamState): void {
+  if (viewer.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  if (streamState.readyEvent) {
+    viewer.send(
+      JSON.stringify({
+        ...streamState.readyEvent,
+        agentId
+      })
+    );
+  }
+
+  streamState.bootstrapChunks.forEach((chunk) => {
+    if (viewer.readyState === WebSocket.OPEN) {
+      viewer.send(chunk, { binary: true });
+    }
+  });
+}
+
+function cacheBootstrapChunk(streamState: StreamState, chunk: Buffer): void {
+  if (streamState.bootstrapBytes >= STREAM_BOOTSTRAP_CACHE_LIMIT_BYTES) {
+    return;
+  }
+
+  const remaining = STREAM_BOOTSTRAP_CACHE_LIMIT_BYTES - streamState.bootstrapBytes;
+  const cachedChunk = chunk.length <= remaining ? Buffer.from(chunk) : Buffer.from(chunk.subarray(0, remaining));
+  streamState.bootstrapChunks.push(cachedChunk);
+  streamState.bootstrapBytes += cachedChunk.length;
 }
 
 function sendJson(res: ServerResponse, statusCode: number, payload: unknown): void {
