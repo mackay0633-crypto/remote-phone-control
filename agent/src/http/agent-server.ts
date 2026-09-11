@@ -6,6 +6,9 @@ import { DeviceTracker } from "../device/device-tracker.js";
 import { InputManager, type DeviceInputCommand } from "../input/input-manager.js";
 import { ScrcpyControlManager } from "../scrcpy/scrcpy-control-manager.js";
 import { H264StreamSession } from "../stream/h264-stream-session.js";
+import type { DeviceKeepalive } from "../device/device-keepalive.js";
+import { AutojsClient, AutojsError } from "../autojs/autojs-client.js";
+import type { StartSendVideoInput } from "../autojs/autojs-types.js";
 
 interface AgentServerOptions {
   host: string;
@@ -15,6 +18,16 @@ interface AgentServerOptions {
   scrcpyServerPath: string;
   streamMaxSize: number;
   streamBitRate: number;
+  deviceKeepalive?: DeviceKeepalive;
+  /** 未提供时 /api/autojs/* 返回 503 */
+  autojsClient?: AutojsClient;
+  /**
+   * 解析本次请求允许操作的设备集合。
+   *
+   * 默认实现返回本 agent 已知的全部设备。接入多租户账号系统后，
+   * 这里应改为「该用户被分配的设备」——它是配额能否真正生效的关键。
+   */
+  resolveAllowedDeviceIds?: () => Promise<string[]> | string[];
 }
 
 export class AgentServer {
@@ -165,8 +178,36 @@ export class AgentServer {
   }
 
   async start(): Promise<void> {
-    await new Promise<void>((resolve) => {
-      this.server.listen(this.options.port, this.options.host, () => resolve());
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: NodeJS.ErrnoException): void => {
+        this.server.off("listening", onListening);
+
+        if (error.code === "EADDRINUSE") {
+          reject(
+            new Error(
+              `端口 ${this.options.port} 已被占用。可能还有另一个 agent 实例在运行，` +
+                `请先停止它（查找占用进程：netstat -ano | findstr :${this.options.port}）`
+            )
+          );
+          return;
+        }
+
+        if (error.code === "EACCES") {
+          reject(new Error(`没有权限监听 ${this.options.host}:${this.options.port}`));
+          return;
+        }
+
+        reject(error);
+      };
+
+      const onListening = (): void => {
+        this.server.off("error", onError);
+        resolve();
+      };
+
+      this.server.once("error", onError);
+      this.server.once("listening", onListening);
+      this.server.listen(this.options.port, this.options.host);
     });
   }
 
@@ -197,8 +238,33 @@ export class AgentServer {
       return;
     }
 
+    if (req.method === "GET" && url.pathname === "/api/devices/keepalive") {
+      this.sendJson(
+        res,
+        200,
+        this.options.deviceKeepalive?.getStatus() ?? {
+          enabled: false,
+          targetCount: 0,
+          onlineCount: 0,
+          missing: [],
+          lastRunAt: null,
+          lastAttempted: 0,
+          lastRestored: 0,
+          lastFailures: []
+        }
+      );
+      return;
+    }
+
     if (req.method === "POST" && url.pathname.startsWith("/api/devices/")) {
       const handled = await this.handleInputRequest(url, req, res);
+      if (handled) {
+        return;
+      }
+    }
+
+    if (url.pathname.startsWith("/api/autojs/")) {
+      const handled = await this.handleAutojsRequest(url, req, res);
       if (handled) {
         return;
       }
@@ -298,6 +364,123 @@ export class AgentServer {
 
     return true;
   }
+
+  /**
+   * /api/autojs/* 路由。
+   *
+   * 写操作一律经由 AutojsClient，而客户端内部会先过校验层，
+   * 因此结构上不存在「绕过校验」的路径。
+   *
+   * 注意：这里的读取接口返回的是 autojs 的**全局视图**。
+   * 接入账号系统后，转发给最终用户之前必须按设备集过滤，
+   * 否则用户会看到他人的账号与任务。
+   */
+  private async handleAutojsRequest(
+    url: URL,
+    req: IncomingMessage,
+    res: ServerResponse
+  ): Promise<boolean> {
+    const client = this.options.autojsClient;
+    if (!client) {
+      this.sendJson(res, 503, {
+        error: "autojs 客户端未启用",
+        code: "autojs_disabled"
+      });
+      return true;
+    }
+
+    const isGet = req.method === "GET";
+    const isPost = req.method === "POST";
+
+    try {
+      if (isGet && url.pathname === "/api/autojs/health") {
+        this.sendJson(res, 200, await client.getHealth());
+        return true;
+      }
+
+      if (isGet && url.pathname === "/api/autojs/run-status") {
+        this.sendJson(res, 200, await client.getRunStatus());
+        return true;
+      }
+
+      if (isGet && url.pathname === "/api/autojs/accounts") {
+        this.sendJson(res, 200, await client.getAccounts());
+        return true;
+      }
+
+      if (isGet && url.pathname === "/api/autojs/devices") {
+        this.sendJson(res, 200, await client.getDevices());
+        return true;
+      }
+
+      if (isPost && url.pathname === "/api/autojs/dayil-work/start") {
+        // 故意声明为必填：缺失时交给 validateDeviceIds 报 400，而不是在这里放行
+        const body = (await readJsonBody(req)) as { device_ids: unknown; config?: unknown };
+        const allowed = await this.getAllowedDeviceIds();
+        this.sendJson(res, 200, await client.startDayilWork(body, allowed));
+        return true;
+      }
+
+      if (isPost && url.pathname === "/api/autojs/send-video/start") {
+        const body = (await readJsonBody(req)) as StartSendVideoInput;
+        const allowed = await this.getAllowedDeviceIds();
+        this.sendJson(res, 200, await client.startSendVideo(body, allowed));
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      this.sendJson(res, mapAutojsErrorStatus(error), {
+        error: error instanceof Error ? error.message : String(error),
+        code: error instanceof AutojsError ? error.code : "unknown"
+      });
+      return true;
+    }
+  }
+
+  /**
+   * 本次调用允许操作的设备集合。
+   *
+   * 默认是本 agent 已知的全部设备。多租户账号系统接入后，
+   * 必须通过 resolveAllowedDeviceIds 替换为「该用户被分配的设备」——
+   * 这是配额与隔离能否真正生效的关键点。
+   */
+  private async getAllowedDeviceIds(): Promise<string[]> {
+    if (this.options.resolveAllowedDeviceIds) {
+      return this.options.resolveAllowedDeviceIds();
+    }
+
+    return this.options.deviceTracker.getDevices().map((device) => device.serial);
+  }
+}
+
+function mapAutojsErrorStatus(error: unknown): number {
+  if (error instanceof AutojsError) {
+    switch (error.code) {
+      case "validation_failed":
+        return 400;
+      case "not_activated":
+        return 403;
+      case "timeout":
+        return 504;
+      case "unreachable":
+        return 502;
+      case "task_failed":
+      case "http_error":
+      case "invalid_response":
+        return 502;
+    }
+  }
+
+  if (error instanceof SyntaxError) {
+    return 400;
+  }
+
+  if (error instanceof Error && error.message === "Request body is required") {
+    return 400;
+  }
+
+  return 500;
 }
 
 function setCorsHeaders(res: ServerResponse): void {

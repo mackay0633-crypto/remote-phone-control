@@ -15,6 +15,12 @@ export interface AdbDeviceMeta {
   height: number;
 }
 
+export interface AdbConnectResult {
+  address: string;
+  ok: boolean;
+  message: string;
+}
+
 export class AdbClient {
   constructor(private readonly adbPath: string) {}
 
@@ -77,10 +83,52 @@ export class AdbClient {
     await this.runShell(serial, ["input", "keyevent", keyCode]);
   }
 
+  /**
+   * 建立 ADB over TCP 连接。
+   *
+   * 注意区分两种“成功”输出：
+   *   - `connected to <addr>`        本次新建连接
+   *   - `already connected to <addr>` 之前已连接
+   * 两者都视为成功；`failed to connect` / `cannot connect` 视为失败。
+   */
+  async connect(address: string): Promise<AdbConnectResult> {
+    return this.runConnectCommand(address, ["connect", address], isConnectOutput);
+  }
+
+  /** 断开 ADB over TCP 连接。用于清理 offline / unauthorized 的残留记录。 */
+  async disconnect(address: string): Promise<AdbConnectResult> {
+    return this.runConnectCommand(address, ["disconnect", address], isDisconnectOutput);
+  }
+
+  private async runConnectCommand(
+    address: string,
+    args: string[],
+    isSuccess: (message: string) => boolean
+  ): Promise<AdbConnectResult> {
+    try {
+      const { stdout, stderr } = await execFileAsync(this.adbPath, args);
+      const message = `${stdout ?? ""}${stderr ?? ""}`.trim();
+      return { address, ok: isSuccess(message), message };
+    } catch (error) {
+      // adb connect 在失败时可能以非 0 退出，这里捕获 stdout/stderr 以便日志可读
+      const payload = error as { stdout?: string; stderr?: string; message?: string };
+      const message = `${payload.stdout ?? ""}${payload.stderr ?? ""}${payload.message ?? ""}`.trim();
+      return { address, ok: false, message: message || "adb connect command failed" };
+    }
+  }
+
   private async runShell(serial: string, args: string[]): Promise<string> {
     const { stdout } = await execFileAsync(this.adbPath, ["-s", serial, "shell", ...args]);
     return stdout.trim();
   }
+}
+
+function isConnectOutput(message: string): boolean {
+  return /(^|\r?\n)\s*(already\s+)?connected to\s/i.test(message);
+}
+
+function isDisconnectOutput(message: string): boolean {
+  return /(^|\r?\n)\s*disconnected\s/i.test(message);
 }
 
 function mapKeyCode(key: "HOME" | "BACK" | "APP_SWITCH"): string {

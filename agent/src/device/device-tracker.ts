@@ -21,6 +21,11 @@ export class DeviceTracker {
     }, this.pollIntervalMs);
   }
 
+  /** 立即刷新一次设备列表，供设备保活模块在恢复连接后调用，避免等待下一个轮询周期。 */
+  async refreshNow(): Promise<void> {
+    await this.refresh();
+  }
+
   stop(): void {
     if (this.intervalId) {
       clearInterval(this.intervalId);

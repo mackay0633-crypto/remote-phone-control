@@ -3,3 +3,11 @@ dist/
 .env
 .DS_Store
 npm-debug.log*
+
+# SQLite 数据库（账号 / 会话 / 设备归属），含敏感数据，不要提交
+relay/data/
+relay/data-test/
+data/
+*.db
+*.db-wal
+*.db-shm
