@@ -10,8 +10,14 @@
  *
  * 运行（需先启动 relay）：
  *   cd relay
+ *   $env:LOGIN_MAX_ATTEMPTS='1000'; $env:REGISTER_MAX_ATTEMPTS='1000'
  *   node --import ./dev/register.mjs src/main.ts      # 另开窗口
+ *   $env:TEST_ADMIN_PASSWORD='<与上面一致>'
  *   node dev/phase-b-isolation-test.mjs
+ *
+ * 注意放宽限流：测试会反复注册与登录，默认限流（每 IP 每小时 10 次注册 /
+ * 每 15 分钟 10 次登录）很快就会被撞上。测试脚本已做幂等处理，
+ * 但限流是按请求数计的，不受幂等影响。
  */
 
 import WebSocket from "ws";
@@ -34,11 +40,12 @@ function requireEnv(name) {
   return value;
 }
 
+// 测试专用网段：与真实设备完全无关，避免误连，也避免把内网信息写进仓库
 const SERIALS = {
-  cust1A: "192.168.9.41:65535",
-  cust1B: "192.168.9.42:65535",
-  cust2A: "192.168.9.43:65535",
-  free: "192.168.9.44:65535"
+  cust1A: "10.99.0.1:65535",
+  cust1B: "10.99.0.2:65535",
+  cust2A: "10.99.0.3:65535",
+  free: "10.99.0.4:65535"
 };
 
 let pass = 0;
@@ -217,6 +224,20 @@ async function main() {
   }
   const adminToken = adminLogin.body.token;
 
+  // 幂等：先把本测试用的设备从任何归属中释放，保证可重复运行
+  for (const serial of Object.values(SERIALS)) {
+    await api("POST", `/api/admin/devices/${encodeURIComponent(serial)}/assign`, { userId: null }, adminToken);
+  }
+
+  // 幂等：上一轮结尾会把 cust1 禁用，这里恢复，否则复用时鉴权会失败
+  const existingUsers = (await api("GET", "/api/admin/users", undefined, adminToken)).body.users;
+  for (const username of ["cust1", "cust2"]) {
+    const found = existingUsers.find((u) => u.username === username);
+    if (found && found.status !== "active") {
+      await api("PATCH", `/api/admin/users/${found.id}`, { status: "active" }, adminToken);
+    }
+  }
+
   await api("POST", "/api/auth/register", { username: "cust1", password: "CustomerPass123" });
   await api("POST", "/api/auth/register", { username: "cust2", password: "CustomerPass123" });
 
@@ -269,19 +290,23 @@ async function main() {
   v1.send({ type: "auth", token: cust1Token });
   await v1.waitFor("auth-ok");
   const v1Devices = await v1.waitFor("devices");
-  chk("cust1 只看到自己的 2 台", v1Devices.devices.map((d) => d.serial).sort(), [SERIALS.cust1A, SERIALS.cust1B].sort());
+  chk(
+    "cust1 只看到自己的 2 台",
+    (v1Devices?.devices ?? []).map((d) => d.serial).sort(),
+    [SERIALS.cust1A, SERIALS.cust1B].sort()
+  );
 
   const v2 = await openViewer("/ws/viewer");
   v2.send({ type: "auth", token: cust2Token });
   await v2.waitFor("auth-ok");
   const v2Devices = await v2.waitFor("devices");
-  chk("cust2 只看到自己的 1 台", v2Devices.devices.map((d) => d.serial), [SERIALS.cust2A]);
+  chk("cust2 只看到自己的 1 台", (v2Devices?.devices ?? []).map((d) => d.serial), [SERIALS.cust2A]);
 
   const vAdmin = await openViewer("/ws/viewer");
   vAdmin.send({ type: "auth", token: adminToken });
   await vAdmin.waitFor("auth-ok");
   const vAdminDevices = await vAdmin.waitFor("devices");
-  chk("管理员看到全部 4 台", vAdminDevices.devices.length, 4);
+  chk("管理员看到全部 4 台", (vAdminDevices?.devices ?? []).length, 4);
 
   // ══════════════ 3. 指令隔离 ══════════════
   console.log("--- 3. 指令下发隔离 ---");
@@ -370,7 +395,7 @@ async function main() {
   await api("POST", `/api/admin/devices/${encodeURIComponent(SERIALS.cust1B)}/assign`, { userId: null }, adminToken);
   await sleep(500);
   const latestDevices = [...v1.messages].reverse().find((m) => m.type === "devices");
-  chk("收回设备后列表立即刷新", latestDevices.devices.map((d) => d.serial), [SERIALS.cust1A]);
+  chk("收回设备后列表立即刷新", (latestDevices?.devices ?? []).map((d) => d.serial), [SERIALS.cust1A]);
 
   // 5d. 禁用账号 → 连接被断开
   await api("PATCH", `/api/admin/users/${cust1.id}`, { status: "disabled" }, adminToken);

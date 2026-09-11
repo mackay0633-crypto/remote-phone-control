@@ -180,14 +180,22 @@ viewerSessions.forEach((viewer, socket) => {
 cd relay
 $env:RELAY_PORT='5091'; $env:RELAY_DB_FILE='data-test/relay.db'
 $env:ADMIN_PASSWORD='<随便设一个测试密码>'
+# 放宽限流：测试会反复注册与登录，默认限流很快会被撞上
+$env:LOGIN_MAX_ATTEMPTS='1000'; $env:REGISTER_MAX_ATTEMPTS='1000'
 node --import ./dev/register.mjs src/main.ts
 
 # 2) 另开窗口跑测试（密码要与上面一致）
 $env:TEST_ADMIN_PASSWORD='<上面那个测试密码>'
-node dev/phase-b-isolation-test.mjs
+node dev/phase-b-isolation-test.mjs        # 隔离测试（30 条）
+node dev/admin-api-contract-test.mjs       # 管理接口契约（65 条）
 ```
 
-> 测试脚本**不提供默认密码**：源码里不留任何可用凭据。
+> 两个脚本**都已做幂等处理**（开头先释放自己使用的测试设备、恢复被禁用的
+> 测试账号、用时间派生的唯一用户名），可以反复运行。
+>
+> 但它们**不提供默认密码**：源码里不留任何可用凭据。
+>
+> 测试用的是 `10.99.0.x` 这个与真实设备无关的网段。
 
 ---
 

@@ -107,6 +107,16 @@ npm run relay:dev
 | `RELAY_DB_FILE` | `data/relay.db` | SQLite 数据库路径（**不要提交**） |
 | `ADMIN_USERNAME` | `admin` | 初始管理员用户名，仅首次启动生效 |
 | `ADMIN_PASSWORD` | 随机生成 | 初始管理员密码，仅首次启动生效 |
+| `LOGIN_MAX_ATTEMPTS` | `10` | 登录限流：每 IP / 每用户名 在窗口内的尝试次数 |
+| `LOGIN_WINDOW_MINUTES` | `15` | 登录限流窗口（分钟） |
+| `REGISTER_MAX_ATTEMPTS` | `10` | 注册限流：每 IP 每小时的次数 |
+
+> **Node 版本要求**：`>= 20`（`better-sqlite3@12` 支持 20.x / 22.x / 23.x / 24.x+）。
+> 数据库是原生模块，预编译包覆盖主流平台，启动前先在 relay 目录 `npm install`。
+> 若预编译包缺失导致编译失败，装上工具链即可：`sudo apt install -y build-essential python3`。
+>
+> 跑自动化测试时记得放宽限流，否则多轮登录会撞 429：
+> `$env:LOGIN_MAX_ATTEMPTS='1000'`
 
 **隔离在服务端强制执行**：客户只能看到、并且只能操控分配给他的设备；
 查看画面与手动操控各自独立开关；管理员改权限对已建立的连接**立即生效**。

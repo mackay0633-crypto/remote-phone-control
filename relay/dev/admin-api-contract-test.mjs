@@ -95,7 +95,8 @@ function startFakeAgent(serials) {
 }
 
 async function main() {
-  const serials = [51, 52, 53].map((n) => `192.168.9.${n}:65535`);
+  // 测试专用网段，与真实设备无关
+  const serials = [51, 52, 53].map((n) => `10.99.0.${n}:65535`);
 
   console.log(`目标 relay: ${BASE}\n`);
 
@@ -108,7 +109,22 @@ async function main() {
   }
   const token = login.body.token;
 
-  await api("POST", "/api/auth/register", { username: "shop1", password: "CustomerPass123" });
+  // 幂等：先把本测试用的设备从任何归属中释放，保证可重复运行
+  for (const serial of serials) {
+    await api("POST", `/api/admin/devices/${encodeURIComponent(serial)}/assign`, { userId: null }, token);
+  }
+
+  // 每次运行用不同的用户名，保证测试可重复执行（共用库时不会撞 409）
+  const username = `shop${Date.now().toString(36).slice(-6)}`;
+  const register = await api("POST", "/api/auth/register", { username, password: "CustomerPass123" });
+
+  if (register.status !== 201) {
+    console.error(`\n注册测试账号失败（HTTP ${register.status}）：${JSON.stringify(register.body)}`);
+    if (register.status === 429) {
+      console.error("这是注册限流。放宽后重试：$env:REGISTER_MAX_ATTEMPTS='1000'");
+    }
+    process.exit(1);
+  }
 
   // ══════════════ 1. /api/admin/meta ══════════════
   console.log("--- 1. 权限元数据（渲染勾选框用）---");
@@ -129,7 +145,7 @@ async function main() {
   console.log("--- 2. 客户列表（渲染卡片用）---");
   const usersRes = await api("GET", "/api/admin/users", undefined, token);
   const users = usersRes.body.users;
-  const shop1 = users.find((u) => u.username === "shop1");
+  const shop1 = users.find((u) => u.username === username);
 
   chk("users 是数组", Array.isArray(users), true);
   chk("含新注册客户", shop1 !== undefined, true);
@@ -147,13 +163,16 @@ async function main() {
   const devicesRes = await api("GET", "/api/admin/devices", undefined, token);
   const devices = devicesRes.body.devices;
 
+  // 只断言本测试自己的设备：与其它测试共用同一个库时不会被干扰
+  const own = devices.filter((d) => serials.includes(d.serial));
+
   chk("devices 是数组", Array.isArray(devices), true);
-  chk("设备数正确", devices.length, 3);
-  chk("serial 是字符串", typeof devices[0].serial, "string");
-  chk("online 是布尔", typeof devices[0].online, "boolean");
-  chk("online 为 true（agent 已连接）", devices[0].online, true);
-  chk("assignedUserId 初始为 null", devices[0].assignedUserId, null);
-  chk("assignedUsername 初始为 null", devices[0].assignedUsername, null);
+  chk("本测试的 3 台设备都在列表里", own.length, 3);
+  chk("serial 是字符串", typeof own[0].serial, "string");
+  chk("online 是布尔", typeof own[0].online, "boolean");
+  chk("online 为 true（agent 已连接）", own[0].online, true);
+  chk("assignedUserId 初始为 null", own[0].assignedUserId, null);
+  chk("assignedUsername 初始为 null", own[0].assignedUsername, null);
 
   // ══════════════ 4. 改权限 ══════════════
   console.log("--- 4. 权限开关 ---");
@@ -202,7 +221,7 @@ async function main() {
   const devicesAfter = (await api("GET", "/api/admin/devices", undefined, token)).body.devices;
   const mine = devicesAfter.filter((d) => d.assignedUserId === shop1.id);
   chk("归属已写入", mine.length, 2);
-  chk("表格能显示归属用户名", mine[0].assignedUsername, "shop1");
+  chk("表格能显示归属用户名", mine[0].assignedUsername, username);
   chk("已分配设备 online 仍为 true", mine[0].online, true);
 
   const usersAfter = (await api("GET", "/api/admin/users", undefined, token)).body.users;
@@ -267,7 +286,7 @@ async function main() {
 
   // ══════════════ 10. 非管理员不得访问 ══════════════
   console.log("--- 10. 非管理员访问管理端 ---");
-  const shopToken = (await api("POST", "/api/auth/login", { username: "shop1", password: "CustomerPass123" })).body.token;
+  const shopToken = (await api("POST", "/api/auth/login", { username, password: "CustomerPass123" })).body.token;
   chk("客户访问 users 403", (await api("GET", "/api/admin/users", undefined, shopToken)).status, 403);
   chk("客户访问 devices 403", (await api("GET", "/api/admin/devices", undefined, shopToken)).status, 403);
   chk("客户访问 meta 403", (await api("GET", "/api/admin/meta", undefined, shopToken)).status, 403);

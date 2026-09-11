@@ -8,9 +8,11 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.4.0",
     "@types/ws": "^8.5.13",
     "tsx": "^4.20.5",

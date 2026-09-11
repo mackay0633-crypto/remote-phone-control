@@ -1,9 +1,9 @@
 /**
  * 数据库表结构。
  *
- * 使用 Node 24 内置的 node:sqlite，无原生依赖。
+ * 驱动是 `better-sqlite3`（见 database.ts 里的选型说明）。
  *
- * 注意 node:sqlite 的取值类型限制：只接受 number / string / bigint / null /
+ * 注意 SQLite 的取值类型限制：只接受 number / string / bigint / null /
  * Uint8Array。**布尔值不被支持**，因此所有开关与标志一律存 0 / 1 整数。
  */
 

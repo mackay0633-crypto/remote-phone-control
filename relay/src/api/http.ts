@@ -52,6 +52,21 @@ function notifyAccessChanged(ctx: ApiContext): void {
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+/**
+ * 登录 / 注册限流参数（可用环境变量调整）。
+ *
+ * 默认值面向生产：登录每 IP 每 15 分钟 10 次。
+ * 但**跑自动化测试时会很快撞上**——测试脚本反复登录同一个 IP，
+ * 所以这里做成可配置的。
+ */
+const LOGIN_MAX_ATTEMPTS = Math.max(1, Number(process.env.LOGIN_MAX_ATTEMPTS ?? "10") || 10);
+const LOGIN_WINDOW_MS = Math.max(
+  60_000,
+  (Number(process.env.LOGIN_WINDOW_MINUTES ?? "15") || 15) * 60_000
+);
+const REGISTER_MAX_ATTEMPTS = Math.max(1, Number(process.env.REGISTER_MAX_ATTEMPTS ?? "10") || 10);
+const REGISTER_WINDOW_MS = 60 * 60 * 1000;
+
 // ─────────────────────────────── 基础设施 ───────────────────────────────
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -297,7 +312,7 @@ export async function handleApiRequest(
 
 async function handleRegister(ctx: ApiContext, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const ip = clientIp(req);
-  if (!allowRequest(`register:${ip}`, 10, 60 * 60 * 1000)) {
+  if (!allowRequest(`register:${ip}`, REGISTER_MAX_ATTEMPTS, REGISTER_WINDOW_MS)) {
     fail(res, 429, "注册过于频繁，请稍后再试");
     return;
   }
@@ -344,9 +359,9 @@ async function handleLogin(ctx: ApiContext, req: IncomingMessage, res: ServerRes
   // 按 用户名 + IP 双维度限流：只按 IP 会被分布式绕过，只按用户名会被人拿来锁定他人账号
   const ip = clientIp(req);
   const keys = [`login:u:${username.toLowerCase()}`, `login:ip:${ip}`];
-  if (keys.some((key) => !allowRequest(key, 10, 15 * 60 * 1000))) {
+  if (keys.some((key) => !allowRequest(key, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS))) {
     writeAudit(ctx.db, null, "auth.login_ratelimited", username, { ip });
-    fail(res, 429, "登录尝试过多，请 15 分钟后再试");
+    fail(res, 429, `登录尝试过多，请 ${Math.round(LOGIN_WINDOW_MS / 60_000)} 分钟后再试`);
     return;
   }
 

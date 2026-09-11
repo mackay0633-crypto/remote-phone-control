@@ -42,17 +42,35 @@
 
 | 项 | 选择 | 理由 |
 |---|---|---|
-| 数据库 | **`node:sqlite`（Node 24 内置）** | 零原生依赖，不用编译、不用预编译包，Linux 服务器开箱即用 |
+| 数据库 | **`better-sqlite3`** | 覆盖 Node 18/20/22/24，预编译包覆盖主流平台 |
 | 密码哈希 | **`node:crypto` 的 scrypt** | 内置 KDF，无需引入 bcrypt/argon2 依赖 |
 | 会话 | 随机令牌，**哈希后入库** | 可吊销、可过期，且库被读走也无法直接冒用 |
 | 令牌传输 | HTTP `Authorization: Bearer` | 不放 URL——URL 会进日志与浏览器历史 |
 
-> ⚠️ **`node:sqlite` 目前仍标记为 experimental。** 换取的是零原生依赖。
-> 所有数据库调用都收敛在 `db/` 与 `auth/` 目录内，
-> 若将来要换回 `better-sqlite3`，改动范围有限。
+### 一次踩坑记录：为什么不是 `node:sqlite`
 
-**另一个约束**：`node:sqlite` 只接受 `number / string / bigint / null / Uint8Array`，
-**不支持布尔值**。因此所有开关一律存 `0 / 1` 整数，由 `toBool` / `fromBool` 转换。
+最初用的是 Node 内置的 `node:sqlite`，理由是「零原生依赖」。
+但那个判断**只验证了开发机（Node 24），没有确认部署服务器的 Node 版本**——
+结果生产服务器是 Node 20，启动直接失败：
+
+```
+Error [ERR_UNKNOWN_BUILTIN_MODULE]: No such built-in module: node:sqlite
+Node.js v20.20.2
+```
+
+`node:sqlite` 直到 **Node 22.5 才加入、23.4 才默认可用**，覆盖面太窄。
+
+改用 `better-sqlite3`：覆盖 Node 18/20/22/24，`npm install` 即可。
+代价是原生模块，换来「装到哪台机器都能跑」。
+
+两个库的 API 几乎一致（同步、`prepare/get/all/run/exec`），
+因此切换只动了 `relay/src/db/database.ts` 一个文件。
+
+**通用教训**：选依赖时要看**部署目标**，不是自己手上那台。
+这次是拿部署环境做了本地便利的取舍。
+
+**一个残留约束**：SQLite 没有原生布尔类型，所有开关一律存 `0 / 1` 整数，
+由 `toBool` / `fromBool` 转换。
 
 ---
 
