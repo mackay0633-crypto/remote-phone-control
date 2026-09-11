@@ -138,25 +138,37 @@ npm run relay:dev
 
 ### Agent 连接 Relay
 
-在启动 Agent 前设置：
+在启动 Agent 前设置（生产环境走 nginx 时用 `wss://`）：
 
 ```powershell
-$env:RELAY_SERVER_WS_URL="ws://<server-host>:5081/ws/agent"
+$env:RELAY_SERVER_WS_URL="wss://your-domain.com/ws/agent"
 $env:AGENT_ID="pc-01"
 npm run agent:server
 ```
 
-### Web 连接 Relay
+### 浏览器：模式自动判断，无需配置
 
-在启动前端前设置：
+前端**按页面来源自动选择模式**，不需要构建时变量：
+
+| 打开地址 | 模式 | 连到哪 |
+|---|---|---|
+| `localhost:5173`（`npm run web:dev`） | 本地直连 | 本机 Agent `127.0.0.1:5071` |
+| 任何其它域名（部署后） | 同源中继 | 当前域名下的 `/api` 与 `/ws` |
+
+所以**构建一次，部署到哪个域名都能用**，nginx 反代同源也不需要配 CORS。
+
+需要显式指定时（比如前后端不同源）仍然可以设 `VITE_RELAY_WS_BASE_URL`，它会覆盖自动判断：
 
 ```powershell
 $env:VITE_RELAY_WS_BASE_URL="ws://<server-host>:5081"
 npm run web:dev
 ```
 
-配置了 `VITE_RELAY_WS_BASE_URL` 后，前端会自动改为 relay 模式：
+### 构建与部署
 
-- 设备列表来自 Relay
-- 视频流来自 Relay `/ws/viewer/stream`
-- 输入控制通过 Relay 回传到 Agent
+```bash
+npm run build --workspace web      # 产物在 web/dist/
+```
+
+完整的服务器部署步骤（nginx、证书、pm2、验证清单）见 **`docs/deploy.md`**，
+nginx 配置模板在 **`deploy/nginx.conf.example`**。

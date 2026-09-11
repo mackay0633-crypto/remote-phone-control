@@ -1,0 +1,104 @@
+# remote-phone-control —— nginx 反向代理示例
+#
+# 作用三件事：
+#   1. 托管前端静态文件（web/dist）
+#   2. 把 /api/ 反代到 relay 的 HTTP 接口
+#   3. 把 /ws/  反代到 relay 的 WebSocket（Agent 接入 / 浏览器控制 / 视频流）
+#
+# 这样做的好处：浏览器和 Agent 都只走 443（HTTPS/WSS），
+# 5081 可以完全从安全组里关掉，不再对外暴露。
+#
+# 用法：
+#   1. 把下面的 your-domain.com 换成你的域名
+#   2. 放到 /etc/nginx/sites-available/remote-phone-control
+#   3. ln -s 到 sites-enabled，nginx -t 通过后 reload
+
+# ── HTTP：ACME 校验 + 跳转 HTTPS ─────────────────────────────
+server {
+    listen 80;
+    listen [::]:80;
+    server_name your-domain.com;
+
+    # Let's Encrypt 续期校验需要走明文 80
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS ───────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name your-domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # 视频上传（尚未实现）将来会用到；默认 1MB 会直接 413
+    client_max_body_size 512m;
+
+    # ── 前端静态文件 ─────────────────────────────────────────
+    # 指向仓库里构建出来的 dist
+    root /home/ubuntu/remote-phone-control/web/dist;
+    index index.html;
+
+    # SPA：找不到的路径一律回 index.html，交给前端路由
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 构建产物带内容哈希，可以放心长缓存
+    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # index.html 不能缓存，否则前端更新后用户拿到旧页面
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    # ── 账号 / 管理 API ──────────────────────────────────────
+    location /api/ {
+        proxy_pass http://127.0.0.1:5081;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ── WebSocket ────────────────────────────────────────────
+    # 覆盖三个端点：/ws/agent（Agent 接入）、/ws/viewer（控制通道）、
+    # /ws/viewer/stream（视频流）
+    location /ws/ {
+        proxy_pass http://127.0.0.1:5081;
+        proxy_http_version 1.1;
+
+        # 这两行是 WebSocket 必须的，缺了会握手失败
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host      $host;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        # 视频流是长连接，nginx 默认 60 秒无数据就断开 —— 必须调大
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+
+        # 边收边转，不要缓冲，否则画面延迟会越积越多
+        proxy_buffering off;
+    }
+
+    # ── relay 健康检查（可选，便于外部探活）──────────────────
+    location = /health {
+        proxy_pass http://127.0.0.1:5081/health;
+        proxy_set_header Host $host;
+    }
+}

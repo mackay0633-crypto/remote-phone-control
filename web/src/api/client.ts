@@ -1,32 +1,56 @@
 import { getToken, type SessionUser } from "./session";
 
 /**
- * API 基址。
+ * 中继模式判定。
  *
- * 中继模式：前端与 relay 同源部署（nginx 托管静态文件并反代 relay），
- * 因此直接复用 VITE_RELAY_WS_BASE_URL 的主机部分，把 ws(s) 换成 http(s)。
+ * 两种来源，按优先级：
  *
- * 本地模式：直连本机 Agent。
+ *   1. **显式指定** `VITE_RELAY_WS_BASE_URL` —— 构建时变量
+ *   2. **按页面来源自动判断**（未指定时）：
+ *        从 localhost / 127.0.0.1 打开  → 本地直连模式（连本机 Agent 5071）
+ *        从其它地址打开                 → 同源中继模式
+ *
+ * 为什么要第 2 条：构建时变量会被**烤进产物**，意味着「构建一次只能部署到一个地址」。
+ * 按来源判断后，同一份 `dist` 部署到任何域名都能工作，
+ * 而且 nginx 反代同源不需要配 CORS。
  */
-function resolveApiBase(): string {
-  const relayWs = (import.meta.env.VITE_RELAY_WS_BASE_URL as string | undefined)?.trim();
+const EXPLICIT_RELAY_BASE = ((import.meta.env.VITE_RELAY_WS_BASE_URL as string | undefined) ?? "")
+  .trim()
+  .replace(/\/+$/, "");
 
-  if (relayWs) {
-    return relayWs.replace(/^ws/, "http").replace(/\/+$/, "");
+/** 从当前页面地址推导同源中继基址；本地或 file:// 返回空串。 */
+function detectSameOriginRelay(): string {
+  if (typeof window === "undefined") {
+    return "";
   }
 
-  return "http://127.0.0.1:5071";
+  const { protocol, hostname, host } = window.location;
+
+  // 直接用文件打开，或本地开发服务器 —— 走本地直连
+  if (protocol === "file:" || hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return "";
+  }
+
+  return `${protocol === "https:" ? "wss:" : "ws:"}//${host}`;
 }
 
 /** 中继 WebSocket 基址（去掉末尾斜杠）；为空表示本地直连模式。 */
-export const RELAY_WS_BASE_URL = ((import.meta.env.VITE_RELAY_WS_BASE_URL as string | undefined) ?? "")
-  .trim()
-  .replace(/\/+$/, "");
+export const RELAY_WS_BASE_URL = EXPLICIT_RELAY_BASE || detectSameOriginRelay();
 
 /** 是否处于中继模式 —— 决定要不要走账号系统。 */
 export const USE_RELAY = RELAY_WS_BASE_URL.length > 0;
 
-export const API_BASE_URL = resolveApiBase();
+/**
+ * API 基址。
+ *
+ * 同源部署时用**相对路径**（空串），请求直接打到当前域名，由 nginx 反代到 relay。
+ * 这样换域名、换协议（http/https）都不用重新构建。
+ */
+export const API_BASE_URL = !USE_RELAY
+  ? "http://127.0.0.1:5071"
+  : EXPLICIT_RELAY_BASE
+    ? EXPLICIT_RELAY_BASE.replace(/^ws/, "http")
+    : "";
 
 export class ApiError extends Error {
   readonly status: number;
