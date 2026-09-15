@@ -1,8 +1,18 @@
+/**
+ * ⚠️ 这一行必须保持在**所有其它 import 之前**。
+ *
+ * 它把 `.env` 载入 process.env，而 `api/http.ts`、`auth/emailVerification.ts`
+ * 是在模块顶层就把 process.env 读成常量的——放到后面就来不及了。
+ * 详见 `config/load-env.ts` 的说明。
+ */
+import { DOT_ENV_LOADED, DOT_ENV_PATH } from "./config/load-env.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { writeSync } from "node:fs";
 import WebSocket, { WebSocketServer } from "ws";
 import { openDatabase } from "./db/database.js";
 import { ensureInitialAdmin, formatBootstrapBanner } from "./auth/bootstrap.js";
 import { handleApiRequest, requireAdmin } from "./api/http.js";
+import { describeMailer, createMailerFromEnv, type Mailer } from "./mail/mailer.js";
 import { listSerialsForUser, syncAgentDevices } from "./devices/store.js";
 import { resolveSession } from "./auth/sessions.js";
 import { findUserById, hasCapability, type UserRecord } from "./auth/users.js";
@@ -147,9 +157,37 @@ const host = process.env.RELAY_HOST?.trim() || "0.0.0.0";
 const port = Number(process.env.RELAY_PORT ?? "5081");
 const STREAM_BOOTSTRAP_CACHE_LIMIT_BYTES = 512 * 1024;
 
+/**
+ * 启动阶段的致命错误：说清楚原因，然后退出。
+ *
+ * 用 `writeSync(2, …)` 而不是 `console.error` + `process.exit`：
+ * 管道上的 stderr 是异步写入的，`process.exit` 会把还没 flush 的内容直接丢掉
+ * （Windows 上尤其明显）。而这行信息是操作者唯一的线索，不能冒被吞掉的险。
+ */
+function fatalStartup(message: string): never {
+  writeSync(2, `${message}\n`);
+  process.exit(1);
+}
+
 // ── 持久化与账号系统 ────────────────────────────────────────────────
 const dbFile = process.env.RELAY_DB_FILE?.trim() || "data/relay.db";
 const db = openDatabase(dbFile);
+
+/**
+ * 邮件通道。
+ *
+ * 默认 console（验证码打印进日志），生产用 `MAIL_TRANSPORT=smtp` 切真实发信。
+ *
+ * 配置写错时**拒绝启动**——静默降级成「以为在发信、实际只有日志」
+ * 会让所有新用户都注册不进来，而且很久都不会被发现。
+ * 这类错误是运维配置问题，不是 bug，所以给一条干净的提示而不是一坨堆栈。
+ */
+const mailer: Mailer = await createMailerFromEnv().catch((error: unknown) =>
+  fatalStartup(
+    `[relay] 邮件配置有误，已拒绝启动：${error instanceof Error ? error.message : String(error)}\n` +
+      "[relay] 配置说明见 docs/deploy.md 的「配置邮件发送」一节。"
+  )
+);
 
 /**
  * API 上下文。
@@ -161,6 +199,7 @@ const db = openDatabase(dbFile);
  */
 const apiContext = {
   db,
+  mailer,
   getOnlineSerials: (): Set<string> => new Set(listDevices().map((device) => device.serial)),
   onAccessChanged: (): void => revalidateViewers()
 };
@@ -709,7 +748,28 @@ function revalidateViewers(): void {
 server.listen(Number.isFinite(port) ? port : 5081, host, () => {
   console.log(`[relay] server ready at http://${host}:${port}`);
   console.log(`[relay] database: ${dbFile}`);
+  console.log(`[relay] mail: ${describeMailer(mailer)}`);
+
+  if (DOT_ENV_LOADED) {
+    // 打出来是为了让操作者确认自己的 .env 真的被读到了
+    console.log(`[relay] env file: ${DOT_ENV_PATH}（真实环境变量优先于它）`);
+  }
   console.log("[relay] api: /api/auth/*, /api/admin/*, /api/my/devices");
+
+  if (mailer.transport === "console") {
+    console.warn(
+      "[relay] ⚠️  邮件为 console 模式：注册验证码只打印在本日志里，不会真正发出。" +
+        "生产环境请设置 MAIL_TRANSPORT=smtp 及 SMTP_* 参数。"
+    );
+  }
+
+  if (mailer.exposesCodes) {
+    console.warn(
+      "[relay] ⚠️  验证码会随接口响应回显（仅非生产环境的 console 模式）。" +
+        "对外提供服务前请设置 NODE_ENV=production 或改用 smtp。"
+    );
+  }
+
   void bootstrapInitialAdmin();
 });
 

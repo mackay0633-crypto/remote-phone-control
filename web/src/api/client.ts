@@ -117,8 +117,49 @@ export function login(username: string, password: string): Promise<LoginResponse
   return request<LoginResponse>("POST", "/api/auth/login", { username, password }, false);
 }
 
-export function register(username: string, password: string): Promise<{ user: SessionUser }> {
-  return request<{ user: SessionUser }>("POST", "/api/auth/register", { username, password }, false);
+/**
+ * 发码接口的统一响应（注册 / 找回密码 / 换绑邮箱三者同形）。
+ *
+ * 找回密码时若邮箱未注册，服务端不会发信，因此**不会**返回 `devCode`——
+ * 生产环境下有信无信都是同一个响应，看不出账号是否存在。
+ */
+export interface VerificationCodeResponse {
+  ok: boolean;
+  email: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+  /** 距离可以重发还剩多少秒 */
+  resendAfterSeconds: number;
+  /**
+   * 仅本地/测试的 console 邮件模式下返回，方便前端调试时不必去翻 relay 日志。
+   * 生产（NODE_ENV=production 或 smtp 模式）不会出现。
+   */
+  devCode?: string;
+}
+
+/**
+ * 注册第一步：给邮箱发验证码。
+ *
+ * 这个接口**不会**透露邮箱是否已被注册（否则就成了批量探测工具），
+ * 重复注册会在第二步以 409 明确告知。
+ */
+export function requestRegisterCode(email: string): Promise<VerificationCodeResponse> {
+  return request<VerificationCodeResponse>("POST", "/api/auth/register/code", { email }, false);
+}
+
+/** 注册第二步：带上验证码完成建号。 */
+export function register(
+  username: string,
+  email: string,
+  password: string,
+  code: string
+): Promise<{ user: SessionUser }> {
+  return request<{ user: SessionUser }>(
+    "POST",
+    "/api/auth/register",
+    { username, email, password, code },
+    false
+  );
 }
 
 export function logout(): Promise<{ ok: boolean }> {
@@ -131,6 +172,53 @@ export function fetchMe(): Promise<{ user: SessionUser }> {
 
 export function changePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean; token: string }> {
   return request<{ ok: boolean; token: string }>("POST", "/api/auth/password", { currentPassword, newPassword });
+}
+
+/** 找回密码第一步（未登录）：给已注册的邮箱发重置验证码。 */
+export function requestPasswordResetCode(email: string): Promise<VerificationCodeResponse> {
+  return request<VerificationCodeResponse>("POST", "/api/auth/password/reset/code", { email }, false);
+}
+
+/**
+ * 找回密码第二步（未登录）：校验验证码并设置新密码。
+ *
+ * 服务端会吊销该账号的全部会话，且**刻意不补发 token**——
+ * 前端拿到成功后就引导用户用新密码重新登录。
+ */
+export function resetPassword(
+  email: string,
+  code: string,
+  newPassword: string
+): Promise<{ ok: boolean; revokedSessions: number }> {
+  return request<{ ok: boolean; revokedSessions: number }>(
+    "POST",
+    "/api/auth/password/reset",
+    { email, code, newPassword },
+    false
+  );
+}
+
+/** 换绑邮箱第一步（需登录）：给**新邮箱**发验证码。 */
+export function requestEmailChangeCode(email: string): Promise<VerificationCodeResponse> {
+  return request<VerificationCodeResponse>("POST", "/api/auth/email/code", { email });
+}
+
+/**
+ * 换绑邮箱第二步（需登录）：当前密码 + 验证码双重确认。
+ *
+ * 要当前密码是因为邮箱是账号的找回通道——只凭一个被盗的会话就能改走邮箱，
+ * 等于把账号彻底送给对方。返回更新后的用户，供页面刷新显示。
+ */
+export function changeEmail(
+  email: string,
+  code: string,
+  currentPassword: string
+): Promise<{ user: SessionUser | null }> {
+  return request<{ user: SessionUser | null }>("POST", "/api/auth/email", {
+    email,
+    code,
+    currentPassword
+  });
 }
 
 // ─────────────────────────── 我的设备 ───────────────────────────
@@ -181,8 +269,13 @@ export const adminApi = {
 
   listUsers: () => request<{ users: AdminUser[] }>("GET", "/api/admin/users"),
 
-  createUser: (username: string, password: string) =>
-    request<{ user: SessionUser }>("POST", "/api/admin/users", { username, password }),
+  /** 邮箱可选；填了即视为已验证（管理员建号相当于人工担保） */
+  createUser: (username: string, password: string, email?: string) =>
+    request<{ user: SessionUser }>("POST", "/api/admin/users", {
+      username,
+      password,
+      ...(email ? { email } : {})
+    }),
 
   updateUser: (
     userId: number,

@@ -15,6 +15,10 @@ export interface UserRecord {
   id: number;
   username: string;
   passwordHash: string;
+  /** 注册邮箱，可能为空（管理员直接建的号、v1 老账号） */
+  email: string | null;
+  /** 邮箱验证通过时间；NULL 表示从未验证 */
+  emailVerifiedAt: string | null;
   role: UserRole;
   status: UserStatus;
   createdAt: string;
@@ -28,6 +32,14 @@ export interface UserRecord {
 export interface PublicUser {
   id: number;
   username: string;
+  email: string | null;
+  /**
+   * 邮箱是否可信。
+   *
+   * 无邮箱的老账号（v1 升级上来的、管理员直接建的）**按已验证对待**——
+   * 否则一上线就会把存量用户全部判成「未验证」，等于自己把自己锁在门外。
+   */
+  emailVerified: boolean;
   role: UserRole;
   status: UserStatus;
   createdAt: string;
@@ -47,6 +59,8 @@ interface UserRow {
   id: number | bigint;
   username: string;
   password_hash: string;
+  email: string | null;
+  email_verified_at: string | null;
   role: string;
   status: string;
   created_at: string;
@@ -62,7 +76,7 @@ interface UserRow {
 }
 
 const SELECT_COLUMNS = `
-  id, username, password_hash, role, status, created_at,
+  id, username, password_hash, email, email_verified_at, role, status, created_at,
   can_view_devices, can_view_stream, can_control_input,
   can_run_dayil, can_send_video, can_upload_video,
   max_devices, max_concurrent_tasks, max_storage_bytes
@@ -72,11 +86,48 @@ export const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,32}$/;
 export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PASSWORD_LENGTH = 128;
 
+/** RFC 5321 规定的邮箱总长度上限 */
+export const EMAIL_MAX_LENGTH = 254;
+
+/**
+ * 邮箱格式校验。
+ *
+ * 刻意**不用完整 RFC 5322 正则**——那个正则又长又难验证，且拦不住
+ * 「格式正确但根本收不到信」的地址。这里只保证：有且只有一个 @、
+ * 两侧非空、域名里有点号。真正的有效性由「能不能收到验证码」来证明。
+ */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+
 export function validateUsername(value: unknown): string | null {
   if (typeof value !== "string" || !USERNAME_PATTERN.test(value)) {
     return "用户名只能包含字母、数字、点、下划线、连字符，长度 3~32";
   }
   return null;
+}
+
+export function validateEmail(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return "请填写邮箱";
+  }
+
+  const email = value.trim();
+  if (email.length === 0 || email.length > EMAIL_MAX_LENGTH || !EMAIL_PATTERN.test(email)) {
+    return "邮箱格式不正确";
+  }
+
+  return null;
+}
+
+/**
+ * 邮箱归一化：去空格 + 转小写。
+ *
+ * 严格按 RFC，@ 前面的大小写是有意义的；但现实中没有任何邮件服务商
+ * 这么用，而用户经常会把手机输入法的首字母大写带进来。
+ * 统一小写存库，配合 `COLLATE NOCASE` 索引，避免出现 Alice@x.com
+ * 与 alice@x.com 两个「不同」的账号。
+ */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 export function validatePassword(value: unknown): string | null {
@@ -109,6 +160,8 @@ function rowToUser(row: UserRow): UserRecord {
     id: Number(row.id),
     username: row.username,
     passwordHash: row.password_hash,
+    email: row.email,
+    emailVerifiedAt: row.email_verified_at,
     role: row.role === "admin" ? "admin" : "customer",
     status: row.status === "disabled" ? "disabled" : "active",
     createdAt: row.created_at,
@@ -130,6 +183,8 @@ export function toPublicUser(user: UserRecord): PublicUser {
   return {
     id: user.id,
     username: user.username,
+    email: user.email,
+    emailVerified: isEmailVerified(user),
     role: user.role,
     status: user.status,
     createdAt: user.createdAt,
@@ -164,6 +219,25 @@ export function findUserByUsername(db: Database, username: string): UserRecord |
   return row ? rowToUser(row) : null;
 }
 
+/** 按邮箱查用户。邮箱统一小写存储，这里同样归一化后再查。 */
+export function findUserByEmail(db: Database, email: string): UserRecord | null {
+  const row = db
+    .prepare(`SELECT ${SELECT_COLUMNS} FROM users WHERE email = ?`)
+    .get(normalizeEmail(email)) as UserRow | undefined;
+
+  return row ? rowToUser(row) : null;
+}
+
+/**
+ * 邮箱是否可信。
+ *
+ * 无邮箱的账号返回 true（存量账号与管理端直接建的号），
+ * 判断依据是「有没有邮箱」，不是「有没有验证过」。
+ */
+export function isEmailVerified(user: UserRecord): boolean {
+  return user.email === null || user.emailVerifiedAt !== null;
+}
+
 export function findUserById(db: Database, id: number): UserRecord | null {
   const row = db.prepare(`SELECT ${SELECT_COLUMNS} FROM users WHERE id = ?`).get(id) as UserRow | undefined;
   return row ? rowToUser(row) : null;
@@ -174,6 +248,15 @@ export interface CreateUserInput {
   /** 明文密码；由本模块负责哈希，调用方不接触哈希细节 */
   password: string;
   role: UserRole;
+  /** 注册邮箱；传入时会被归一化。留空表示这个账号没有邮箱 */
+  email?: string | null;
+  /**
+   * 邮箱验证通过时间。
+   *
+   * 只有两种情况会传：走完验证码流程的自助注册，以及管理员手工建的号
+   * （管理员建号相当于人工担保，不该卡在邮箱验证上）。
+   */
+  emailVerifiedAt?: string | null;
 }
 
 export async function createUser(db: Database, input: CreateUserInput): Promise<UserRecord> {
@@ -181,17 +264,20 @@ export async function createUser(db: Database, input: CreateUserInput): Promise<
 
   const capabilities: CapabilitySet = input.role === "admin" ? allCapabilities() : noCapabilities();
   const timestamp = nowIso();
+  const email = input.email ? normalizeEmail(input.email) : null;
 
   const result = db.prepare(
     `INSERT INTO users(
-       username, password_hash, role, status, created_at, updated_at,
+       username, password_hash, email, email_verified_at, role, status, created_at, updated_at,
        can_view_devices, can_view_stream, can_control_input,
        can_run_dayil, can_send_video, can_upload_video,
        max_devices, max_concurrent_tasks, max_storage_bytes
-     ) VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     input.username,
     passwordHash,
+    email,
+    input.emailVerifiedAt ?? null,
     input.role,
     timestamp,
     timestamp,
@@ -285,6 +371,28 @@ export async function setUserPassword(db: Database, userId: number, password: st
     nowIso(),
     userId
   );
+}
+
+/**
+ * 换绑邮箱。
+ *
+ * `emailVerifiedAt` 由调用方传：管理员改邮箱（人工担保）和用户自助换绑
+ * （验证码证明）都会用到，两者都应记为已验证。
+ */
+export function setUserEmail(
+  db: Database,
+  userId: number,
+  email: string,
+  emailVerifiedAt: string
+): UserRecord | null {
+  db.prepare("UPDATE users SET email = ?, email_verified_at = ?, updated_at = ? WHERE id = ?").run(
+    normalizeEmail(email),
+    emailVerifiedAt,
+    nowIso(),
+    userId
+  );
+
+  return findUserById(db, userId);
 }
 
 export function listUsers(db: Database, role?: UserRole): UserListItem[] {

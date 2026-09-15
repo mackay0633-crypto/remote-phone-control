@@ -44,8 +44,14 @@ server {
     client_max_body_size 512m;
 
     # ── 前端静态文件 ─────────────────────────────────────────
-    # 指向仓库里构建出来的 dist
-    root /home/ubuntu/remote-phone-control/web/dist;
+    # 注意：指向 /var/www，**不是**仓库里的 web/dist。
+    #
+    # 原因：Ubuntu 家目录是 0750（drwxr-x---），而 nginx 以 www-data 运行，
+    # 根本进不去 /home/ubuntu，会直接 403。错误日志里长这样：
+    #   stat() "/home/ubuntu/.../web/dist/" failed (13: Permission denied)
+    #
+    # 产物由 deploy/deploy.sh 发布到这里。
+    root /var/www/remote-phone-control;
     index index.html;
 
     # SPA：找不到的路径一律回 index.html，交给前端路由

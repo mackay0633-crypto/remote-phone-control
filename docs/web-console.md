@@ -153,13 +153,24 @@ $env:VITE_RELAY_WS_BASE_URL = "ws://127.0.0.1:5081"
 npm run web:dev
 ```
 
-**构建**：`web/package.json` 里**没有 `build` 脚本**，只有 `dev`。
-`web/dist/` 是既有产物，需要重新构建时手动执行：
+**构建**：
 
-```powershell
-cd web
-npx vite build
+```bash
+npm run build --workspace web      # 产物在 web/dist/
 ```
+
+**不需要任何构建时变量**，产物本身就是通用的。
+
+> 早先这里有个隐患：`scripts/dev-web-test.mjs` 从前让前端**跨源**直连
+> `:5091`，因此要求用 `VITE_RELAY_WS_BASE_URL` 构建，把地址烤进产物 ——
+> 那份 `web/dist` 一旦被误传到服务器，客户浏览器会去连自己的
+> `127.0.0.1:5091`，前端直接废掉。
+>
+> 现在该脚本把 `/api` 与 `/ws` **反代到 relay**，前端与 relay 同源
+> （与生产的 nginx 部署一致），所以普通生产构建直接可用，隐患从结构上消失。
+>
+> 生产仍建议**在服务器上构建**（`bash deploy/deploy.sh` 会做），
+> 这样产物与代码版本天然一致，不会出现本地陈旧产物被误用。
 
 > 部署时由 nginx 托管 `web/dist`，并反代 relay 的 HTTP 与 WebSocket。
 > 反代 WebSocket 必须带 `Upgrade` 与 `Connection` 头（README 已有说明）。
@@ -178,8 +189,5 @@ npx vite build
 4. **前端构建无法在受限沙箱内验证** —— Vite 需要 esbuild 子进程。
    已完成的是 `tsc --noEmit` 类型检查（通过）与接口契约测试（65 条通过）。
 
-5. **`web/package.json` 没有 `build` 脚本** —— 只有 `dev`。
-   出生产产物需手动 `cd web; npx vite build`。
-
-6. **`web/src/main.js` 是未被引用的编译残留** —— `index.html` 加载的是
-   `/src/main.tsx`。可以删除，但未动它以免影响你的既有流程。
+5. **`web/src/main.js` 是未被引用的编译残留** —— `index.html` 加载的是
+   `/src/main.tsx`。可以删除，但未动它以免影响既有流程。

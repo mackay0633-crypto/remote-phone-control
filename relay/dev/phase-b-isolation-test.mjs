@@ -90,6 +90,28 @@ async function api(method, path, body, token) {
   return { status: res.status, body: payload };
 }
 
+/**
+ * 幂等地保证账号存在。
+ *
+ * 注册现在是两步（先要验证码、再带码建号），且这些账号在共用库里
+ * 往往**上一轮就已经注册过**——那时 register 会以 409 拒绝，
+ * 属于预期情况，这里不当作失败。
+ *
+ * 验证码取自响应的 `devCode`，因此 relay 需要跑在
+ * 非生产环境 + `MAIL_TRANSPORT=console` 下。
+ */
+async function ensureRegistered(username, email, password) {
+  const codeRes = await api("POST", "/api/auth/register/code", { email });
+  const code = codeRes.body?.devCode;
+
+  if (!code) {
+    // 邮箱已注册时会走到这里（发码接口对已注册邮箱也返回 200，但生产模式不回显 devCode）
+    return { status: 0, body: null };
+  }
+
+  return api("POST", "/api/auth/register", { username, email, password, code });
+}
+
 // ────────────────────────── 假 Agent ──────────────────────────
 
 /** 记录真正下发到 Agent 的 input，用来证明「被拒的指令没有到达设备」 */
@@ -238,8 +260,8 @@ async function main() {
     }
   }
 
-  await api("POST", "/api/auth/register", { username: "cust1", password: "CustomerPass123" });
-  await api("POST", "/api/auth/register", { username: "cust2", password: "CustomerPass123" });
+  await ensureRegistered("cust1", "cust1@example.test", "CustomerPass123");
+  await ensureRegistered("cust2", "cust2@example.test", "CustomerPass123");
 
   const users = (await api("GET", "/api/admin/users", undefined, adminToken)).body.users;
   const cust1 = users.find((u) => u.username === "cust1");

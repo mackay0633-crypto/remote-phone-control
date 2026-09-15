@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AccountSettings } from "./AccountSettings";
 import { AdminView } from "./AdminView";
 import { ConsoleView } from "./ConsoleView";
 import { LoginView, createLocalUser } from "./LoginView";
@@ -23,6 +24,7 @@ export function App() {
   // 只有「中继模式 + 本地存有令牌」才需要先向服务端确认一次
   const [verifying, setVerifying] = useState(() => USE_RELAY && loadSession() !== null);
   const [view, setView] = useState<View>("console");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!USE_RELAY) {
@@ -103,6 +105,38 @@ export function App() {
     });
   }
 
+  /** 换绑邮箱后同步用户信息（用户名与令牌都不变，只有邮箱变） */
+  function handleUserChanged(user: SessionUser): void {
+    setSession((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const next: StoredSession = { token: current.token, user };
+      saveSession(next.token, next.user);
+      return next;
+    });
+  }
+
+  /**
+   * 改密后换掉本地令牌。
+   *
+   * 服务端吊销了全部会话，只给当前设备补发了一个新令牌；不换的话，
+   * 下一次请求和 WebSocket 重连都会用那个已失效的旧令牌。
+   * ConsoleView 的 WS effect 依赖 token，所以这里更新后会自动重连。
+   */
+  function handleTokenRefreshed(token: string): void {
+    setSession((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const next: StoredSession = { token, user: current.user };
+      saveSession(next.token, next.user);
+      return next;
+    });
+  }
+
   if (verifying) {
     return (
       <main className="auth-shell">
@@ -159,13 +193,27 @@ export function App() {
         )}
 
         {USE_RELAY ? (
-          <button type="button" className="top-bar-action" onClick={() => void handleLogout()}>
-            退出登录
-          </button>
+          <div className="top-bar-actions">
+            <button type="button" className="top-bar-action neutral" onClick={() => setSettingsOpen(true)}>
+              账号设置
+            </button>
+            <button type="button" className="top-bar-action" onClick={() => void handleLogout()}>
+              退出登录
+            </button>
+          </div>
         ) : (
           <span className="top-bar-note">本地直连模式</span>
         )}
       </div>
+
+      {settingsOpen ? (
+        <AccountSettings
+          user={session.user}
+          onClose={() => setSettingsOpen(false)}
+          onUserChanged={handleUserChanged}
+          onTokenRefreshed={handleTokenRefreshed}
+        />
+      ) : null}
 
       {activeView === "admin" ? (
         <AdminView user={session.user} />

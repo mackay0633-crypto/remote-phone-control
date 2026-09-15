@@ -45,13 +45,40 @@ npm ci
 
 ---
 
-## 3. 构建前端
+## 3. 构建前端并发布
+
+一键脚本把「构建 + 发布 + 重启」都做了：
+
+```bash
+bash deploy/deploy.sh
+```
+
+它做的事：`git pull` → `npm ci` → 构建 → 复制到 `/var/www/remote-phone-control`
+→ `chown www-data` → `pm2 restart`。
+
+手工做的话是：
 
 ```bash
 npm run build --workspace web
+
+sudo mkdir -p /var/www/remote-phone-control
+sudo rm -rf /var/www/remote-phone-control/*
+sudo cp -r web/dist/. /var/www/remote-phone-control/
+sudo chown -R www-data:www-data /var/www/remote-phone-control
 ```
 
-产物在 `web/dist/`。
+### ⚠️ 为什么必须复制到 /var/www，不能让 nginx 读仓库？
+
+Ubuntu 的家目录是 `0750`（`drwxr-x---`），**nginx 以 `www-data` 运行，根本进不去
+`/home/ubuntu`**，会直接返回 403。错误日志里长这样：
+
+```
+[crit] stat() "/home/ubuntu/remote-phone-control/web/dist/" failed (13: Permission denied)
+[error] open() "/home/ubuntu/remote-phone-control/web/dist/index.html" failed (13: Permission denied)
+```
+
+另一种"解决"是给家目录开遍历权限，但那是**把整个家目录暴露给 nginx 进程**，
+不值得。标准做法就是产物发布到 `/var/www`。
 
 **不需要设置任何构建时变量** —— 前端会按页面来源自动判断：
 
@@ -70,9 +97,17 @@ npm run build --workspace web
 sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/remote-phone-control
 sudo nano /etc/nginx/sites-available/remote-phone-control     # 改 your-domain.com
 sudo ln -sf /etc/nginx/sites-available/remote-phone-control /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default                   # 去掉默认站点
-sudo nginx -t && sudo systemctl reload nginx
+
+# 关键：删掉默认站点。不删的话它会先匹配上，把你的配置彻底盖住，
+# 而且症状极具迷惑性 —— nginx -T 显示的是新配置，但返回的是旧内容
+sudo rm -f /etc/nginx/sites-enabled/default
+
+sudo nginx -t && sudo systemctl restart nginx
 ```
+
+> ⚠️ **`reload` 有时不生效**（旧 worker 继续用旧配置）。
+> 改完配置行为没变就用 `sudo systemctl restart nginx` —— restart 会彻底
+> 换掉 master 和所有 worker，是确定的。
 
 配置里三个容易漏的点：
 
@@ -108,6 +143,7 @@ ADMIN_PASSWORD='<你的强密码>' pm2 start npm --name remote-phone-relay -- ru
 ```
 [relay] server ready at http://0.0.0.0:5081
 [relay] database: data/relay.db
+[relay] mail: console（验证码只打印在日志里，不会真正发出）
 [relay] api: /api/auth/*, /api/admin/*, /api/my/devices
 ```
 
@@ -117,6 +153,50 @@ ADMIN_PASSWORD='<你的强密码>' pm2 start npm --name remote-phone-relay -- ru
 pm2 save
 pm2 startup     # 按提示执行输出的那行命令
 ```
+
+### 配置邮件发送（注册验证码）
+
+**不做这一步，线上就没有人能注册成功**——验证码发不出去，注册流程走不完。
+
+```bash
+MAIL_TRANSPORT=smtp \
+SMTP_HOST='smtp.exmail.qq.com' \
+SMTP_PORT='465' \
+SMTP_USER='noreply@your-domain.com' \
+SMTP_PASS='<授权码>' \
+SMTP_FROM='noreply@your-domain.com' \
+NODE_ENV=production \
+pm2 start npm --name remote-phone-relay -- run relay:start
+```
+
+要点：
+
+- 不设 `MAIL_TRANSPORT` 时默认 `console`：验证码只打印进 pm2 日志。
+  内网 demo 够用（`pm2 logs` 里能看到码），但**不能对外提供服务**
+- `NODE_ENV=production` 不只是性能开关，它同时关掉「验证码随接口回显」这一调试行为。
+  只要不是生产，relay 会把 `devCode` 放进发码响应里方便前端调试——
+  对外服务时那就是个取码后门
+- 多数邮箱服务商要的是**授权码**而不是登录密码，且 `SMTP_FROM` 必须与
+  `SMTP_USER` 一致——用别的地址当发件人会被直接拒收
+- 6 位数字验证码非常像营销邮件，**发信域名务必配好 SPF / DKIM / DMARC**，
+  否则大概率进垃圾箱。量大时建议改用阿里云邮件推送 / 腾讯云 SES
+- `nodemailer` 已经在 `relay` 的 dependencies 里（也就是 `package-lock.json` 里），
+  第 2 步的 `npm ci` 会一并装好，**不需要额外安装**
+- `SMTP_SECURE` 不设时按端口推断（465 = 隐式 TLS，587 = STARTTLS）；
+  填错的表现是发信报 SSL 握手错误，注册接口返回 502
+- 也可以把变量写进 **`relay/.env`**（复制 `relay/.env.example` 改成 `.env` 即可，
+  该文件已被 `.gitignore` 忽略）。加载用的是 Node 内建的 `process.loadEnvFile`，
+  **真实环境变量优先于 `.env`**——所以「生产用 pm2 注入、本地用 .env 调试」可以共存，
+  部署时也不会被磁盘上遗留的 `.env` 覆盖。需要 Node 20.12+
+
+启动日志会打印当前邮件通道；配置写错时 relay **拒绝启动**，而不是悄悄退回 console：
+
+```
+[relay] mail: smtp（smtp.exmail.qq.com:465）
+[relay] env file: /srv/remote-phone-control/relay/.env（真实环境变量优先于它）
+```
+
+（第二行只在确实存在 `.env` 时出现，用来确认它真的被读到了。）
 
 ---
 

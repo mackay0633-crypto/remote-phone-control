@@ -33,6 +33,10 @@ export interface SessionQuota {
 export interface SessionUser {
   id: number;
   username: string;
+  /** 注册邮箱；老账号或管理员直接建的号可能为空 */
+  email: string | null;
+  /** 无邮箱的账号恒为 true（存量账号按已验证对待） */
+  emailVerified: boolean;
   role: UserRole;
   status: UserStatus;
   createdAt: string;

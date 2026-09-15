@@ -1,0 +1,18 @@
+# 行尾策略。
+#
+# 不加 `* text=auto`：那会在下次提交时批量规范化已有文件，
+# 产生一个巨大且无意义的 diff。这里只针对真正会踩坑的两类文件。
+
+# Windows 脚本必须 CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Linux 脚本必须 LF —— 带 CRLF 时 bash 会报
+# "bad interpreter: /usr/bin/env bash^M"
+*.sh  text eol=lf
+
+# 注意：scripts/start-agent.ps1 还要求「UTF-8 带 BOM」。
+# gitattributes 的 eol 规则不影响 BOM，但用编辑器重存该文件时
+# 要确认编码仍选 "UTF-8 with BOM"，否则 Windows PowerShell 5.1
+# 会按 GBK 解码，中文注释变乱码并引发莫名的语法错误。

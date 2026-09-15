@@ -270,6 +270,11 @@ export function AdminView({ user }: AdminViewProps) {
                     <div className="admin-user-meta">
                       设备 {item.deviceCount} / {item.quota.maxDevices}
                     </div>
+                    {item.email ? (
+                      <div className="admin-user-email" title={item.email}>
+                        {item.email}
+                      </div>
+                    ) : null}
                   </button>
                 ))
               )}
@@ -285,6 +290,14 @@ export function AdminView({ user }: AdminViewProps) {
                   <div>
                     <div className="panel-kicker">选中账号</div>
                     <h2>{selectedUser.username}</h2>
+                    {selectedUser.email ? (
+                      <div className="admin-user-email" title={selectedUser.email}>
+                        {selectedUser.email}
+                        {selectedUser.emailVerified ? "（已验证）" : "（未验证）"}
+                      </div>
+                    ) : (
+                      <div className="admin-user-email">无邮箱</div>
+                    )}
                   </div>
                   <button
                     type="button"

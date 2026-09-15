@@ -71,6 +71,31 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * 走完整的两步注册：先要验证码，再带码建号。
+ *
+ * 验证码从 `/api/auth/register/code` 的 `devCode` 字段读——
+ * 它只在**非生产环境 + console 邮件模式**下返回。
+ * 生产模式下刻意不回显（否则就成了线上取码后门），
+ * 所以这个测试必须对着 console 模式的 relay 跑。
+ */
+async function registerUser(username, email, password) {
+  const codeRes = await api("POST", "/api/auth/register/code", { email });
+
+  if (codeRes.status !== 200) {
+    throw new Error(`获取验证码失败（HTTP ${codeRes.status}）：${JSON.stringify(codeRes.body)}`);
+  }
+
+  if (!codeRes.body.devCode) {
+    throw new Error(
+      "响应里没有 devCode。relay 需要以非生产环境（不设 NODE_ENV=production）" +
+        "且 MAIL_TRANSPORT=console 启动，测试才拿得到验证码。"
+    );
+  }
+
+  return api("POST", "/api/auth/register", { username, email, password, code: codeRes.body.devCode });
+}
+
 function startFakeAgent(serials) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${WS_BASE}/ws/agent`);
@@ -114,17 +139,22 @@ async function main() {
     await api("POST", `/api/admin/devices/${encodeURIComponent(serial)}/assign`, { userId: null }, token);
   }
 
-  // 每次运行用不同的用户名，保证测试可重复执行（共用库时不会撞 409）
+  // 每次运行用不同的用户名与邮箱，保证测试可重复执行（共用库时不会撞 409）
   const username = `shop${Date.now().toString(36).slice(-6)}`;
-  const register = await api("POST", "/api/auth/register", { username, password: "CustomerPass123" });
+  const email = `${username}@example.test`;
+  const register = await registerUser(username, email, "CustomerPass123");
 
   if (register.status !== 201) {
     console.error(`\n注册测试账号失败（HTTP ${register.status}）：${JSON.stringify(register.body)}`);
     if (register.status === 429) {
-      console.error("这是注册限流。放宽后重试：$env:REGISTER_MAX_ATTEMPTS='1000'");
+      console.error("这是注册限流。放宽后重试：");
+      console.error("  $env:REGISTER_MAX_ATTEMPTS='1000'; $env:REGCODE_MAX_ATTEMPTS='1000'");
     }
     process.exit(1);
   }
+
+  chk("注册返回的 email 一致", register.body.user.email, email);
+  chk("注册返回 emailVerified=true", register.body.user.emailVerified, true);
 
   // ══════════════ 1. /api/admin/meta ══════════════
   console.log("--- 1. 权限元数据（渲染勾选框用）---");
@@ -157,6 +187,9 @@ async function main() {
   chk("quota.maxConcurrentTasks 是数字", typeof shop1.quota.maxConcurrentTasks, "number");
   chk("quota.maxStorageBytes 是数字", typeof shop1.quota.maxStorageBytes, "number");
   chk("不含 passwordHash 字段", "passwordHash" in shop1, false);
+  chk("含 email 字段（管理页展示用）", shop1.email, email);
+  chk("emailVerified 是布尔", typeof shop1.emailVerified, "boolean");
+  chk("自有注册的邮箱已标记验证", shop1.emailVerified, true);
 
   // ══════════════ 3. /api/admin/devices ══════════════
   console.log("--- 3. 设备列表（渲染分配表格用）---");
