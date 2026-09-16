@@ -8,16 +8,24 @@
 # 这样做的好处：浏览器和 Agent 都只走 443（HTTPS/WSS），
 # 5081 可以完全从安全组里关掉，不再对外暴露。
 #
-# 用法：
-#   1. 把下面的 your-domain.com 换成你的域名
+# 用法（推荐直接用脚本，它会处理「证书还不存在时 nginx -t 过不了」的先后顺序）：
+#   sudo bash deploy/setup-nginx-domain.sh jyglobal.top you@example.com
+#
+# 手工用法：
+#   1. 把下面所有 your-domain.com 换成你的域名（包括证书路径那两行，
+#      certbot 的目录名就是 -d 的第一个域名）
 #   2. 放到 /etc/nginx/sites-available/remote-phone-control
 #   3. ln -s 到 sites-enabled，nginx -t 通过后 reload
+#
+# ⚠️ 直接启用本文件是**不行的**：它引用了 /etc/letsencrypt/live/... 下的证书，
+#    证书没签之前 `nginx -t` 会直接失败。先按脚本的两步走（HTTP-only → 签证书
+#    → 换成这份），或者先手工签好证书再启用。
 
 # ── HTTP：ACME 校验 + 跳转 HTTPS ─────────────────────────────
 server {
     listen 80;
     listen [::]:80;
-    server_name your-domain.com;
+    server_name your-domain.com www.your-domain.com;
 
     # Let's Encrypt 续期校验需要走明文 80
     location /.well-known/acme-challenge/ {
@@ -34,7 +42,7 @@ server {
     listen 443 ssl;
     listen [::]:443 ssl;
     http2 on;
-    server_name your-domain.com;
+    server_name your-domain.com www.your-domain.com;
 
     ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
