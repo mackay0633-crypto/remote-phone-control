@@ -56,7 +56,15 @@ async function main(): Promise<void> {
         inputManager: relayInputManager,
         adbPath: env.adbPath,
         streamMaxSize: env.streamMaxSize,
-        streamBitRate: env.streamBitRate
+        streamBitRate: env.streamBitRate,
+        // 让 relay 转来的养号/发视频请求能落到 autojs 上
+        autojsClient,
+        // 发视频需要先把客户上传的文件从服务器拉到本机，才有本地路径给 autojs
+        videoDownload: {
+          relayHttpBaseUrl: env.relayHttpBaseUrl,
+          agentSecret: env.agentSecret,
+          mediaDir: env.mediaDir
+        }
       });
 
       relayClient.start();
@@ -101,6 +109,12 @@ function logEnv(env: AgentEnv, keepalive: DeviceKeepalive): void {
   console.log(`[agent] relay ws: ${env.relayServerWsUrl || "disabled"}`);
   console.log(`[agent] agent id: ${env.agentId}`);
   console.log(`[agent] autojs: ${env.autojsBaseUrl} (timeout ${env.autojsTimeoutMs}ms)`);
+  console.log(`[agent] media dir: ${env.mediaDir}`);
+  console.log(
+    `[agent] video download: ${env.relayHttpBaseUrl || "disabled"} / secret ${
+      env.agentSecret ? "configured" : "MISSING"
+    }`
+  );
 
   if (keepalive.enabled) {
     const targets = keepalive.getTargets();

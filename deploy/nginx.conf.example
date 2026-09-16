@@ -40,7 +40,9 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
 
-    # 视频上传（尚未实现）将来会用到；默认 1MB 会直接 413
+    # 视频上传用得到：默认 1MB 会让所有视频直接 413。
+    # 这个值与 relay 的 VIDEO_MAX_BYTES 默认值（512MB）保持一致，
+    # 改一边就要改另一边，否则 nginx 先拦或 relay 先拦，报错位置会很迷惑。
     client_max_body_size 512m;
 
     # ── 前端静态文件 ─────────────────────────────────────────
@@ -78,6 +80,14 @@ server {
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 视频上传是「浏览器 → nginx → relay」的裸字节流。
+        # 默认 nginx 会先把整个请求体缓冲到临时文件再转发，
+        # 512MB 的视频等于写两遍磁盘。关掉后字节直接透传给 relay 落盘。
+        proxy_request_buffering off;
+        # 大文件在慢网络下传输可能远超默认 60 秒
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
     }
 
     # ── WebSocket ────────────────────────────────────────────

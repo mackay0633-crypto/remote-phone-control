@@ -105,6 +105,32 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_email_verifications_lookup
      ON email_verifications(email, purpose, id DESC)`,
 
+  /**
+   * 客户上传的视频素材。
+   *
+   * `safe_name` 是**规范化后的文件名**，它有两个用途：
+   *   1. 磁盘上的实际文件名
+   *   2. 传给 autojs 的 basename（autojs 会从 basename 推导视频名写进脚本）
+   *
+   * `original_name` 只用于界面展示。
+   *
+   * 为什么要有 safe_name：autojs 会把文件名拼进 adb 命令行（经 cmd.exe），
+   * 一个带 `"` 的文件名就能跳出引号注入命令。规范化规则与 agent 侧
+   * `autojs-validation.ts` 的 `sanitizeVideoFilename` **必须完全一致**，
+   * 否则 agent 会以「文件名未经规范化」为由拒绝下发。
+   */
+  `CREATE TABLE IF NOT EXISTS videos (
+     id            TEXT    PRIMARY KEY,
+     user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     original_name TEXT    NOT NULL,
+     safe_name     TEXT    NOT NULL,
+     size_bytes    INTEGER NOT NULL,
+     sha256        TEXT    NOT NULL,
+     created_at    TEXT    NOT NULL
+   )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_videos_user ON videos(user_id)`,
+
   `CREATE TABLE IF NOT EXISTS audit_log (
      id            INTEGER PRIMARY KEY AUTOINCREMENT,
      actor_user_id INTEGER,
@@ -186,6 +212,22 @@ export const MIGRATIONS: Migration[] = [
       "ALTER TABLE email_verifications_v3 RENAME TO email_verifications",
       `CREATE INDEX IF NOT EXISTS idx_email_verifications_lookup
          ON email_verifications(email, purpose, id DESC)`
+    ]
+  },
+  {
+    version: 4,
+    description: "发视频：新增 videos 表（客户上传的素材）",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS videos (
+         id            TEXT    PRIMARY KEY,
+         user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+         original_name TEXT    NOT NULL,
+         safe_name     TEXT    NOT NULL,
+         size_bytes    INTEGER NOT NULL,
+         sha256        TEXT    NOT NULL,
+         created_at    TEXT    NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS idx_videos_user ON videos(user_id)`
     ]
   }
 ];

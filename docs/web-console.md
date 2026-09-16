@@ -1,9 +1,11 @@
 # 浏览器控制台与管理后台（Phase C）
 
-> 状态：**登录 / 注册 / 令牌 / WebSocket 鉴权 / 管理后台**均已完成。
-> 管理后台的接口契约经 **65 条断言**验证；
-> WebSocket 隔离经 **30 条断言**验证。
-> 尚未开始：养号与发视频面板。
+> 状态：**登录 / 注册 / 令牌 / WebSocket 鉴权 / 管理后台 / 养号 / 发视频**
+> 均已完成。断言数：管理后台契约 **70**、WebSocket 隔离 **30**、
+> 自动化转发 **29**、发视频链路 **49**、agent 下载 **19**、agent 下发 **24**、
+> 前端同源反代 **15**。
+>
+> 发视频的完整链路与安全边界见 [`docs/video-pipeline.md`](./video-pipeline.md)。
 
 ---
 
@@ -179,15 +181,43 @@ npm run build --workspace web      # 产物在 web/dist/
 
 ## 7. 已知限制
 
-1. **养号 / 发视频面板还没做** —— agent 侧的 `/api/autojs/*` 已就绪，
-   relay 转发与前端界面待做。
+1. **播放器仍是 JMuxer**（现有实现），未做 WebRTC。
 
-2. **视频上传还没做** —— 客户上传素材、服务器落盘、agent 拉取这条链路未实现。
+2. **前端构建需在普通（非受限）环境验证** —— Vite 需要 esbuild 子进程。
+   已完成的验证是 `tsc --noEmit` 类型检查（通过）、`vite build`（通过，
+   产物 302 kB / gzip 92 kB）与同源反代下的接口契约测试。
 
-3. **播放器仍是 JMuxer**（现有实现），未做 WebRTC。
-
-4. **前端构建无法在受限沙箱内验证** —— Vite 需要 esbuild 子进程。
-   已完成的是 `tsc --noEmit` 类型检查（通过）与接口契约测试（65 条通过）。
-
-5. **`web/src/main.js` 是未被引用的编译残留** —— `index.html` 加载的是
+3. **`web/src/main.js` 是未被引用的编译残留** —— `index.html` 加载的是
    `/src/main.tsx`。可以删除，但未动它以免影响既有流程。
+
+## 8. 养号与发视频
+
+两个面板都在「自动化」页。请求走**独立的 viewer 连接**
+（`web/src/api/automation.ts`），不和控制台那条共用——
+控制通道的生命周期绑在实时画面上，切设备会重建连接，
+而发视频可能跑好几分钟，共用会导致切个设备就把在途请求丢掉。
+
+### 养号
+
+选设备 + 五个行为参数 → `dayil-work.start`。界面填「秒」，
+下发时换算成毫秒（`PLAY_DURATION`），因为 autojs 的模板收的是毫秒。
+
+参数名与取值范围必须与 `agent/src/autojs/autojs-validation.ts` 一致：
+`buildDayilWork` 会把配置项**原样替换进无引号的 JS 占位符**
+（`var SWIPE_COUNT = {{SWIPE_COUNT}};`），所以字符串值等于代码注入。
+校验层只接受有限整数与白名单键名。
+
+### 发视频
+
+素材库（上传 / 列表 / 删除）+ 发布设置（精准 / 批量）。
+完整链路与安全边界见 [`docs/video-pipeline.md`](./video-pipeline.md)。
+
+界面上两个刻意的取舍：
+
+- **账号从 `accounts` 接口拉，不由界面编造** —— 账号名会成为手机上的
+  远程目录名（`/sdcard/SaveVideo/<account>/`），必须与 autojs 里真实
+  存在的账号一致。
+- **批量模式只做「账号 ↔ 视频」配对** —— autojs 的 batch 语义就是
+  `assignments: [{account, video}]`，界面直接映射，不额外发明概念。
+  配对里的 `video` 用的是**规范化后的文件名**，因为 autojs 从
+  `video_paths` 的 basename 推导视频名，两边必须完全一致。

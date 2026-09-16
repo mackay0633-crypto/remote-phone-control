@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "devices": "tsx src/main.ts",
-    "dev": "tsx watch src/main.ts --serve"
+    "dev": "tsx watch src/main.ts --serve",
+    "test:video-download": "node dev/video-download-test.mjs",
+    "test:send-video": "tsx dev/send-video-dispatch-test.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.4.0",

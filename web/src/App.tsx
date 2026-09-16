@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { AccountSettings } from "./AccountSettings";
 import { AdminView } from "./AdminView";
+import { AutomationView } from "./AutomationView";
 import { ConsoleView } from "./ConsoleView";
 import { LoginView, createLocalUser } from "./LoginView";
 import { USE_RELAY, fetchMe, logout } from "./api/client";
 import { clearSession, loadSession, saveSession, type SessionUser, type StoredSession } from "./api/session";
 import "./styles.css";
 
-type View = "console" | "admin";
+type View = "console" | "automation" | "admin";
 
 /**
  * 应用外壳：会话生命周期 + 视图切换。
@@ -157,8 +158,8 @@ export function App() {
   }
 
   const isAdmin = session.user.role === "admin";
-  // 非管理员即使把 view 改成 admin 也进不去；服务端同样会 403
-  const activeView: View = isAdmin ? view : "console";
+  // 非管理员不能进管理页；服务端同样会 403。控制台与自动化所有人可见。
+  const activeView: View = !isAdmin && view === "admin" ? "console" : view;
 
   return (
     <main className="app-shell">
@@ -171,15 +172,22 @@ export function App() {
           <span className="top-bar-username">{session.user.username}</span>
         </div>
 
-        {isAdmin ? (
-          <div className="top-bar-nav">
-            <button
-              type="button"
-              className={activeView === "console" ? "active" : ""}
-              onClick={() => setView("console")}
-            >
-              控制台
-            </button>
+        <div className="top-bar-nav">
+          <button
+            type="button"
+            className={activeView === "console" ? "active" : ""}
+            onClick={() => setView("console")}
+          >
+            控制台
+          </button>
+          <button
+            type="button"
+            className={activeView === "automation" ? "active" : ""}
+            onClick={() => setView("automation")}
+          >
+            自动化
+          </button>
+          {isAdmin ? (
             <button
               type="button"
               className={activeView === "admin" ? "active" : ""}
@@ -187,10 +195,8 @@ export function App() {
             >
               管理
             </button>
-          </div>
-        ) : (
-          <div className="top-bar-nav" />
-        )}
+          ) : null}
+        </div>
 
         {USE_RELAY ? (
           <div className="top-bar-actions">
@@ -217,6 +223,8 @@ export function App() {
 
       {activeView === "admin" ? (
         <AdminView user={session.user} />
+      ) : activeView === "automation" ? (
+        <AutomationView token={session.token} user={session.user} />
       ) : (
         <ConsoleView
           token={session.token}

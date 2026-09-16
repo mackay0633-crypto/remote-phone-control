@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { nowIso, type Database } from "../db/database.js";
 import {
   authenticate,
@@ -30,6 +32,22 @@ import {
 import { CAPABILITIES, CAPABILITY_LABELS, type CapabilitySet } from "../auth/capabilities.js";
 import { assignDevice, listAllDevices, listDevicesForUser, releaseAllDevices } from "../devices/store.js";
 import { writeAudit } from "../db/audit.js";
+import {
+  ALLOWED_VIDEO_EXTENSIONS,
+  createVideo,
+  deleteVideo,
+  getVideo,
+  listVideosForUser,
+  maxVideoBytes,
+  newVideoId,
+  removeVideoFile,
+  sanitizeVideoFilename,
+  totalBytesForUser,
+  videoFileExists,
+  videoFilePath,
+  writeVideoFile,
+  type VideoRecord
+} from "../videos/store.js";
 import { bumpAccessEpoch } from "../access/epoch.js";
 import type { Mailer } from "../mail/mailer.js";
 import {
@@ -298,6 +316,15 @@ export async function handleApiRequest(
       return true;
     }
 
+    // ── Agent 下载视频 ────────────────────────────────────────
+    // 故意放在用户会话之前：这条路用的是 **agent 密钥**，不是用户令牌。
+    // 客户上传的素材不该让任何登录用户随便下载，只有设备主机能取。
+    const agentVideoMatch = path.match(/^\/api\/agent\/videos\/([a-f0-9]{32})$/);
+    if (agentVideoMatch && method === "GET") {
+      await handleAgentVideoDownload(ctx, req, res, agentVideoMatch[1]);
+      return true;
+    }
+
     // ── 需要登录 ──────────────────────────────────────────────
     const auth = resolveAuth(ctx, req);
 
@@ -342,6 +369,29 @@ export async function handleApiRequest(
 
       if (method === "GET" && path === "/api/my/devices") {
         handleMyDevices(ctx, res, auth);
+        return true;
+      }
+
+      // ── 视频素材（发视频用）─────────────────────────────────
+      if (path === "/api/videos") {
+        if (method === "POST") {
+          await handleVideoUpload(ctx, req, res, auth, url);
+          return true;
+        }
+
+        if (method === "GET") {
+          sendJson(res, 200, {
+            videos: listVideosForUser(ctx.db, auth.user.id).map(toPublicVideo),
+            usedBytes: totalBytesForUser(ctx.db, auth.user.id),
+            quotaBytes: auth.user.maxStorageBytes
+          });
+          return true;
+        }
+      }
+
+      const videoMatch = path.match(/^\/api\/videos\/([a-f0-9]{32})$/);
+      if (videoMatch && method === "DELETE") {
+        await handleVideoDelete(ctx, res, auth, videoMatch[1]);
         return true;
       }
 
@@ -1236,4 +1286,213 @@ async function handleAdminAssignDevice(
   });
 
   sendJson(res, 200, { ok: true, serial, userId });
+}
+
+// ─────────────────────────── 视频素材 ───────────────────────────
+
+/**
+ * agent 用于下载视频的共享密钥。
+ *
+ * 为什么单独用密钥而不是复用用户会话：客户上传的素材只有**设备主机**
+ * 需要取，任何登录用户都不该能直接下载别人的视频。
+ *
+ * 未配置时**直接拒绝**（fail closed）——视频是客户数据，
+ * 不能因为配置缺失就变成公开可下载。
+ */
+function agentSecret(): string {
+  return process.env.AGENT_SECRET?.trim() ?? "";
+}
+
+function timingSafeEqualString(a: string, b: string): boolean {
+  const bufferA = Buffer.from(a, "utf8");
+  const bufferB = Buffer.from(b, "utf8");
+
+  if (bufferA.length !== bufferB.length) {
+    return false;
+  }
+
+  return timingSafeEqual(bufferA, bufferB);
+}
+
+function formatBytes(value: number): string {
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(0)} KB`;
+  return `${value} B`;
+}
+
+function toPublicVideo(video: VideoRecord): Record<string, unknown> {
+  return {
+    id: video.id,
+    name: video.safeName,
+    originalName: video.originalName,
+    sizeBytes: video.sizeBytes,
+    createdAt: video.createdAt
+  };
+}
+
+/**
+ * 客户上传视频。
+ *
+ * 刻意**不用 multipart**：请求体就是原始文件字节，文件名走查询参数。
+ * 少一个 multipart 解析依赖，也能直接流式落盘（不用先把整个文件读进内存）。
+ *
+ *   POST /api/videos?name=<urlencoded 原始文件名>
+ *   Content-Type: application/octet-stream
+ *   <原始字节>
+ */
+async function handleVideoUpload(
+  ctx: ApiContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+  auth: AuthResult,
+  url: URL
+): Promise<void> {
+  if (!hasCapability(auth.user, "can_upload_video")) {
+    writeAudit(ctx.db, auth.user.id, "video.upload_denied", null, { reason: "missing_capability" });
+    fail(res, 403, "当前账号没有上传视频的权限");
+    return;
+  }
+
+  const rawName = url.searchParams.get("name") ?? "";
+  const safeName = sanitizeVideoFilename(rawName);
+
+  if (!safeName) {
+    fail(
+      res,
+      400,
+      `文件名不合法：仅支持 ${ALLOWED_VIDEO_EXTENSIONS.join(" / ")}，且需包含字母或数字`
+    );
+    return;
+  }
+
+  const maxBytes = maxVideoBytes();
+  const declared = Number(req.headers["content-length"] ?? 0);
+  const quota = auth.user.maxStorageBytes;
+  const used = totalBytesForUser(ctx.db, auth.user.id);
+
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    fail(res, 413, `视频超过单文件上限 ${Math.round(maxBytes / 1024 / 1024)} MB`);
+    return;
+  }
+
+  // 先用 content-length 快速挡一次；实际大小在写完之后再校一遍
+  if (quota > 0 && used + declared > quota) {
+    fail(res, 413, `存储配额不足：已用 ${formatBytes(used)}，上限 ${formatBytes(quota)}`);
+    return;
+  }
+
+  const videoId = newVideoId();
+  let stored;
+
+  try {
+    stored = await writeVideoFile(videoId, safeName, req, maxBytes);
+  } catch (error) {
+    fail(res, 400, error instanceof Error ? error.message : String(error));
+    return;
+  }
+
+  // content-length 可能缺省或与实际不符，这里按真实写入量再校一次
+  if (quota > 0 && used + stored.sizeBytes > quota) {
+    await removeVideoFile(videoId);
+    fail(res, 413, `存储配额不足：已用 ${formatBytes(used)}，上限 ${formatBytes(quota)}`);
+    return;
+  }
+
+  const record = createVideo(ctx.db, {
+    id: videoId,
+    userId: auth.user.id,
+    // 原始名只用于界面展示，限长避免存进奇怪的东西
+    originalName: rawName.slice(0, 200),
+    safeName,
+    sizeBytes: stored.sizeBytes,
+    sha256: stored.sha256
+  });
+
+  writeAudit(ctx.db, auth.user.id, "video.uploaded", videoId, {
+    safeName,
+    sizeBytes: stored.sizeBytes
+  });
+
+  sendJson(res, 201, {
+    video: toPublicVideo(record),
+    usedBytes: totalBytesForUser(ctx.db, auth.user.id),
+    quotaBytes: quota
+  });
+}
+
+async function handleVideoDelete(
+  ctx: ApiContext,
+  res: ServerResponse,
+  auth: AuthResult,
+  videoId: string
+): Promise<void> {
+  const video = getVideo(ctx.db, videoId);
+  if (!video) {
+    fail(res, 404, "视频不存在");
+    return;
+  }
+
+  if (video.userId !== auth.user.id && auth.user.role !== "admin") {
+    writeAudit(ctx.db, auth.user.id, "video.delete_denied", videoId, { reason: "not_owner" });
+    fail(res, 403, "无权删除该视频");
+    return;
+  }
+
+  deleteVideo(ctx.db, videoId);
+  await removeVideoFile(videoId);
+
+  writeAudit(ctx.db, auth.user.id, "video.deleted", videoId, { safeName: video.safeName });
+  sendJson(res, 200, {
+    ok: true,
+    usedBytes: totalBytesForUser(ctx.db, video.userId)
+  });
+}
+
+/**
+ * 设备主机下载视频。
+ *
+ * 响应头带上原始安全文件名与 sha256：文件名用于在本地按同名落盘
+ * （autojs 从 basename 推导视频名，名字不能变），sha256 供 agent 校验完整性。
+ */
+async function handleAgentVideoDownload(
+  ctx: ApiContext,
+  req: IncomingMessage,
+  res: ServerResponse,
+  videoId: string
+): Promise<void> {
+  const expected = agentSecret();
+
+  if (!expected) {
+    fail(res, 503, "服务端未配置 AGENT_SECRET，视频下载通道不可用");
+    return;
+  }
+
+  const provided = bearerToken(req);
+  if (!provided || !timingSafeEqualString(provided, expected)) {
+    writeAudit(ctx.db, null, "video.agent_download_denied", videoId, { reason: "bad_secret" });
+    fail(res, 401, "agent 凭证无效");
+    return;
+  }
+
+  const video = getVideo(ctx.db, videoId);
+  if (!video) {
+    fail(res, 404, "视频不存在");
+    return;
+  }
+
+  if (!(await videoFileExists(video.id, video.safeName))) {
+    fail(res, 404, "视频文件已丢失，请重新上传");
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "application/octet-stream",
+    "Content-Length": String(video.sizeBytes),
+    // 文件名可能与 ASCII 不兼容，用 percent-encoding 传
+    "X-Video-Name": encodeURIComponent(video.safeName),
+    "X-Video-Sha256": video.sha256
+  });
+
+  createReadStream(videoFilePath(video.id, video.safeName)).pipe(res);
 }

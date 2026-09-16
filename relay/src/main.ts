@@ -18,6 +18,7 @@ import { resolveSession } from "./auth/sessions.js";
 import { findUserById, hasCapability, type UserRecord } from "./auth/users.js";
 import { writeAudit } from "./db/audit.js";
 import { getAccessEpoch } from "./access/epoch.js";
+import { AutomationRouter } from "./automation/router.js";
 
 type DeviceStatus = "online" | "offline" | "unauthorized" | "unknown";
 type StreamStatus = "idle" | "starting" | "streaming" | "error";
@@ -108,11 +109,22 @@ interface StreamEventMessage {
   message?: string;
 }
 
+/** Agent 执行完自动化请求后的回执 */
+interface AutomationResultMessage {
+  type: "automation-result";
+  requestId: string;
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  code?: string;
+}
+
 type AgentMessage =
   | RegisterAgentMessage
   | DevicesMessage
   | InputErrorMessage
-  | StreamEventMessage;
+  | StreamEventMessage
+  | AutomationResultMessage;
 
 interface AgentConnection {
   agentId: string;
@@ -208,6 +220,31 @@ const agents = new Map<string, AgentConnection>();
 const viewerSessions = new Map<WebSocket, ViewerSession>();
 const streamViewerSessions = new Map<WebSocket, StreamViewerSession>();
 const streamStates = new Map<string, StreamState>();
+
+/**
+ * 自动化请求路由器（养号 / 发视频）。
+ *
+ * 鉴权、设备归属校验、结果按设备集裁剪都在模块内部完成——
+ * 这三件事都是安全边界，不适合散在主流程里。
+ */
+const automationRouter = new AutomationRouter({
+  db,
+  sendToAgent: (agentId, message): boolean => {
+    const agent = agents.get(agentId);
+    if (!agent || agent.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    agent.socket.send(JSON.stringify(message));
+    return true;
+  },
+  resolveAgentId: (serial): string | undefined =>
+    listDevices().find((device) => device.serial === serial)?.agentId,
+  anyOnlineAgentId: (): string | undefined => {
+    const first = agents.values().next();
+    return first.done ? undefined : first.value.agentId;
+  },
+  timeoutMs: Number(process.env.AUTOMATION_TIMEOUT_MS ?? 0) || undefined
+});
 
 /** 鉴权超时：连上后必须在此时限内发送 auth 消息 */
 const AUTH_TIMEOUT_MS = 5000;
@@ -326,6 +363,17 @@ agentWsServer.on("connection", (socket, req) => {
           });
           return;
         }
+        case "automation-result": {
+          // 按 requestId 精确回给发起的那条连接，不广播
+          automationRouter.handleResult(
+            payload.requestId,
+            payload.ok,
+            payload.data,
+            payload.error,
+            payload.code
+          );
+          return;
+        }
       }
     } catch (error) {
       console.error(`[relay] invalid agent message: ${error instanceof Error ? error.message : String(error)}`);
@@ -423,6 +471,25 @@ viewerWsServer.on("connection", (socket) => {
       return;
     }
 
+    // ── 自动化请求（养号 / 发视频）────────────────────────────
+    if (payload.type === "automation") {
+      const outcome = automationRouter.handleRequest(existing, payload);
+
+      if (!outcome.ok) {
+        // 用与成功响应同形的失败响应，前端只需处理一种消息格式
+        socket.send(
+          JSON.stringify({
+            type: "automation-result",
+            requestId: typeof payload.requestId === "string" ? payload.requestId : null,
+            action: payload.action,
+            ok: false,
+            error: outcome.error
+          })
+        );
+      }
+      return;
+    }
+
     if (payload.type !== "input") {
       return;
     }
@@ -465,6 +532,13 @@ viewerWsServer.on("connection", (socket) => {
 
   socket.on("close", () => {
     clearTimeout(authTimer);
+
+    const viewer = viewerSessions.get(socket);
+    if (viewer) {
+      // 断开时把在途的自动化请求标记失败，否则 pending 会一直留到超时
+      automationRouter.failAllForViewer(viewer, "连接已断开");
+    }
+
     viewerSessions.delete(socket);
   });
 });

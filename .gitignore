@@ -11,3 +11,6 @@ data/
 *.db
 *.db-wal
 *.db-shm
+
+# 本机测试用的临时库与视频素材
+.tmp-test/

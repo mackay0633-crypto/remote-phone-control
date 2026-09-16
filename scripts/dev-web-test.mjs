@@ -35,6 +35,8 @@ import WebSocket from "ws";
 const RELAY_PORT = Number(process.env.TEST_RELAY_PORT ?? "5091");
 const WEB_PORT = Number(process.env.TEST_WEB_PORT ?? "8090");
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD ?? "DevTest123456";
+/** 本地验收用的固定密钥，与真实部署无关（生产必须各自随机生成） */
+const AGENT_SECRET = process.env.TEST_AGENT_SECRET ?? "devtest-agent-secret";
 
 /** 测试专用网段，和真实设备无关 */
 const DEVICES = [
@@ -180,6 +182,10 @@ function startRelay() {
         // 库放在已被 gitignore 的 data-test 下，重启后测试账号还在，方便反复验收
         RELAY_DB_FILE: "data-test/ui-test.db",
         ADMIN_PASSWORD,
+        // 视频下载通道的共享密钥。假 agent 不会真的去下载，
+        // 但设上之后 `/api/agent/videos/:id` 才是可用的，
+        // 便于手工 curl 验证「服务器确实存下了客户上传的文件」。
+        AGENT_SECRET,
         // console 模式：验证码会回显到接口，前端会自动填入，省得真发邮件
         MAIL_TRANSPORT: "console",
         // 验收时会反复注册/登录，放宽限流
@@ -261,6 +267,92 @@ function startFakeAgent() {
       return;
     }
 
+    /**
+     * 模拟 autojs 的自动化接口。
+     *
+     * 不接真 autojs，只回一个成功形状的响应，
+     * 让「自动化」页面能走完整流程（选设备 → 下发 → 看结果）。
+     * 真正下发前会打印出来，方便确认参数确实传到了这一层。
+     */
+    if (msg.type === "automation") {
+      const reply = (ok, data, error, code) =>
+        socket.send(
+          JSON.stringify({ type: "automation-result", requestId: msg.requestId, ok, data, error, code })
+        );
+
+      const deviceIds = msg.payload?.device_ids ?? [];
+
+      switch (msg.action) {
+        case "health":
+          reply(true, { ok: true, port: 5000 });
+          return;
+
+        case "run-status":
+          reply(true, {
+            success: true,
+            active: false,
+            taskCount: 0,
+            runCount: 0,
+            deviceCount: 0,
+            entries: []
+          });
+          return;
+
+        case "accounts":
+          // 给每台假设备配一个账号，否则「发视频」页面的账号下拉永远是空的，
+          // 本地根本走不完流程。device_id 必须与上报的设备 serial 一致，
+          // relay 会据此把账号裁给对应租户。
+          reply(
+            true,
+            DEVICES.map((device, index) => ({
+              id: index + 1,
+              username: `acc_dev_${index + 1}`,
+              device_id: device.serial,
+              status: "online"
+            }))
+          );
+          return;
+
+        case "dayil-work.start":
+          console.log(`[fake-agent] 养号下发 → ${deviceIds.length} 台: ${deviceIds.join(", ")}`);
+          reply(true, {
+            success: true,
+            message: "养号脚本生成成功（假响应）",
+            script_path: "D:\\fake\\DayilWork_run_devtest.js",
+            script_run_id: "dayil_work_devtest",
+            script_type: "dayil_work"
+          });
+          return;
+
+        case "send-video.start": {
+          // 真实 agent 会先用 video_ids 从 relay 下载文件，再把本地路径
+          // 放进 video_paths。这里只把收到的 payload 打出来，
+          // 方便确认 video_ids 到了、而调用方塞的 video_paths 被剥掉了。
+          const videoIds = msg.payload?.video_ids ?? [];
+          console.log(
+            `[fake-agent] 发视频下发 → ${deviceIds.length} 台，${videoIds.length} 个视频（假响应）`
+          );
+          console.log(`[fake-agent] video_ids=${JSON.stringify(videoIds)}`);
+          console.log(
+            `[fake-agent] video_paths=${JSON.stringify(msg.payload?.video_paths ?? null)}（应为 null）`
+          );
+
+          reply(true, {
+            success: true,
+            script_run_id: "sendvedio_devtest",
+            script_type: msg.payload?.type === "batch" ? "sendvedio_batch" : "sendvedio_precise",
+            resolved_videos: videoIds,
+            resolved_device_ids: deviceIds
+          });
+          return;
+        }
+
+        default:
+          reply(false, undefined, `不支持的动作: ${msg.action}`, "unsupported_action");
+      }
+      return;
+    }
+
     if (msg.type === "start-stream") {
       socket.send(
         JSON.stringify({ type: "stream-ready", serial: msg.serial, width: 1080, height: 2220 })
@@ -324,9 +416,12 @@ console.log(`
 │ relay      http://127.0.0.1:${RELAY_PORT}
 │ 管理员     admin / ${ADMIN_PASSWORD}
 │ 虚拟设备   ${DEVICES.length} 台（由假 Agent 上报，没有真实画面）
+│ agent 密钥 ${AGENT_SECRET}（假 agent 不会真的下载视频）
 │
 │ 邮件是 console 模式：验证码会显示在页面上并自动填入，不会真发信
 │
-│ 验收清单见 docs/web-console.md；Ctrl+C 结束（会一并关掉 relay）
+│ 验收清单见 docs/web-console.md；自动化验收（另开窗口）：
+│   node scripts/dev-web-acceptance.mjs
+│ Ctrl+C 结束（会一并关掉 relay）
 └${bar}
 `);

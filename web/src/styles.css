@@ -1287,6 +1287,116 @@ select {
   cursor: not-allowed;
 }
 
+/* ────────────────────── 发视频面板 ────────────────────── */
+
+/* 素材库里的单行：左边是可点的选择区，右边固定放删除按钮 */
+.video-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid rgba(167, 201, 255, 0.1);
+  border-radius: 11px;
+  background: rgba(6, 11, 22, 0.5);
+}
+
+.video-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+/* 长中文名要能省略，否则会把删除按钮挤出卡片 */
+.video-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-quota {
+  margin-top: 14px;
+}
+
+.video-quota-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(167, 201, 255, 0.12);
+  overflow: hidden;
+}
+
+.video-quota-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(82, 180, 255, 0.9), rgba(160, 120, 255, 0.9));
+  transition: width 0.25s ease;
+}
+
+/* 表单项：标签在上，控件在下，与 admin-quota-field 视觉一致 */
+.video-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.video-field select,
+.video-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(167, 201, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(4, 8, 18, 0.8);
+  color: #edf6ff;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.video-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.video-field select:focus,
+.video-textarea:focus {
+  border-color: rgba(82, 180, 255, 0.6);
+}
+
+.video-assign-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.video-assign-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(167, 201, 255, 0.1);
+  border-radius: 11px;
+  background: rgba(6, 11, 22, 0.5);
+  font-size: 13px;
+}
+
+.video-assign-row select {
+  flex: 0 0 42%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(167, 201, 255, 0.18);
+  border-radius: 9px;
+  background: rgba(4, 8, 18, 0.8);
+  color: #edf6ff;
+  outline: none;
+}
+
 @media (max-width: 900px) {
   .admin-grid {
     grid-template-columns: 1fr;
@@ -1299,5 +1409,14 @@ select {
 
   .admin-table-head {
     display: none;
+  }
+
+  /* 窄屏下账号选择与视频名上下排，避免下拉被压到不可用 */
+  .video-assign-row {
+    flex-wrap: wrap;
+  }
+
+  .video-assign-row select {
+    flex: 1 1 100%;
   }
 }

@@ -138,6 +138,24 @@ pm2 start npm --name remote-phone-relay -- run relay:start
 ADMIN_PASSWORD='<你的强密码>' pm2 start npm --name remote-phone-relay -- run relay:start
 ```
 
+### 视频下发用的共享密钥
+
+「发视频」需要 relay 与设备主机之间有一条**独立于账号体系**的下载通道
+（设备主机没有用户会话）。两端必须配同一个密钥，否则下载全部 401：
+
+```bash
+# relay：与 ADMIN_PASSWORD 一起注入
+AGENT_SECRET='<openssl rand -hex 32 的输出>' \
+ADMIN_PASSWORD='<你的强密码>' \
+pm2 start npm --name remote-phone-relay -- run relay:start
+```
+
+不设 `AGENT_SECRET` 时 relay 不会崩，只是 `/api/agent/videos/:id` 返回 503
+（设备主机拉到视频这一步会失败，日志里会明说）。
+
+另外确认 `RELAY_MEDIA_DIR` 所在分区**有足够空间**：每个视频都会在服务器
+留一份，且目前不做自动清理。默认是 relay 工作目录下的 `data/videos`。
+
 日志里应该有：
 
 ```
@@ -211,12 +229,28 @@ setx SCRCPY_PATH        "C:\path\to\scrcpy.exe"
 setx SCRCPY_SERVER_PATH "C:\path\to\scrcpy-server"
 setx DEVICE_TCP_RANGE   "10.0.0.41-60:5555"
 
+# 发视频用：必须与服务器上的 AGENT_SECRET 完全一致
+setx AGENT_SECRET       "<与服务器同一个密钥>"
+# 可选：视频在本机的暂存目录，默认 %TEMP%\remote-phone-media。
+# 放到系统盘之外更稳妥——每个视频都会在本机也留一份。
+setx MEDIA_DIR          "D:\remote-phone-media"
+
 # 每次启动
 cd D:\projects\remote-phone-control
 $env:RELAY_SERVER_WS_URL = "wss://your-domain.com/ws/agent"   # 注意是 wss
 $env:AGENT_ID = "pc-01"
 npm run agent:server
 ```
+
+启动日志里能直接确认视频通道是否就绪：
+
+```
+[agent] media dir: D:\remote-phone-media
+[agent] video download: http://your-domain.com / secret configured
+```
+
+`secret MISSING` 或 `video download: disabled` 就说明 `AGENT_SECRET` /
+`RELAY_SERVER_WS_URL` 没设上，此时所有发视频任务都会在下载那一步失败。
 
 > `setx` 只对新开的窗口生效 —— 设完必须**关掉当前窗口重开**，
 > 或者用 `$env:XXX = "..."` 在当前窗口临时设。
@@ -241,6 +275,17 @@ curl https://your-domain.com/health
 | 浏览器打开 `https://your-domain.com` | 出现登录页 |
 | 用管理员登录 | 顶栏出现「控制台 / 管理」 |
 | 进「管理」 | 看到全部设备，全部为空闲 |
+| 给客户开 `can_upload_video` + `can_send_video` + 设 `maxStorageBytes` | 「自动化 → 发视频」里能上传素材、选设备、下发 |
+| 下发后看 agent 日志 | `[agent] video <id> -> <路径>` 然后 autojs 的 script_run_id |
+
+### nginx 的两个视频相关设置
+
+`deploy/nginx.conf.example` 里有两条是**大文件上传必须**的，自定义 nginx 配置时别漏：
+
+- `client_max_body_size 512m` —— 默认 1MB，会让所有视频直接 413。
+  这个值要与 relay 的 `VIDEO_MAX_BYTES` 对齐。
+- `proxy_request_buffering off` —— 默认 nginx 会先把整个请求体缓冲到临时文件
+  再转发，512MB 的视频等于写两遍磁盘。
 
 ---
 

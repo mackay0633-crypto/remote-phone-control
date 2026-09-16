@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { parseDeviceTargets } from "../device/device-targets.js";
 
 export interface AgentEnv {
@@ -19,6 +21,12 @@ export interface AgentEnv {
   autojsBaseUrl: string;
   /** autojs 请求超时；发视频含 adb push，默认给足时间 */
   autojsTimeoutMs: number;
+  /** 与 relay 约定的共享密钥，用于拉取视频等 agent 专用接口 */
+  agentSecret: string;
+  /** 视频等素材在本机的暂存目录 */
+  mediaDir: string;
+  /** relay 的 HTTP 基地址，由 RELAY_SERVER_WS_URL 推导 */
+  relayHttpBaseUrl: string;
 }
 
 /**
@@ -65,6 +73,10 @@ export function loadEnv(): AgentEnv {
   const autojsBaseUrl = normalizeHttpBaseUrl(process.env.AUTOJS_BASE_URL?.trim() || "http://127.0.0.1:5000");
   const autojsTimeoutMs = Number(process.env.AUTOJS_TIMEOUT_MS ?? "300000");
 
+  const agentSecret = process.env.AGENT_SECRET?.trim() || "";
+  const mediaDir = resolve(process.env.MEDIA_DIR?.trim() || join(tmpdir(), "remote-phone-media"));
+  const relayHttpBaseUrl = deriveHttpBase(relayServerWsUrl);
+
   return {
     adbPath,
     scrcpyPath,
@@ -84,8 +96,35 @@ export function loadEnv(): AgentEnv {
       ? Math.min(keepaliveConcurrency, 16)
       : 4,
     autojsBaseUrl,
-    autojsTimeoutMs: Number.isFinite(autojsTimeoutMs) && autojsTimeoutMs >= 1000 ? autojsTimeoutMs : 300_000
+    autojsTimeoutMs: Number.isFinite(autojsTimeoutMs) && autojsTimeoutMs >= 1000 ? autojsTimeoutMs : 300_000,
+    agentSecret,
+    mediaDir,
+    relayHttpBaseUrl
   };
+}
+
+/**
+ * 从 relay 的 WebSocket 地址推导出 HTTP 基地址。
+ *
+ * 例：`ws://1.2.3.4:5081/ws/agent` → `http://1.2.3.4:5081`
+ *
+ * 未配置 relay 时返回空串，调用方需据此拒绝下载类操作，而不是猜一个地址。
+ */
+function deriveHttpBase(relayWsUrl: string): string {
+  if (!relayWsUrl) {
+    return "";
+  }
+
+  try {
+    const url = new URL(relayWsUrl);
+    url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+    url.pathname = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
 }
 
 function normalizeHttpBaseUrl(value: string): string {
