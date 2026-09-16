@@ -234,13 +234,30 @@ setx AGENT_SECRET       "<与服务器同一个密钥>"
 # 可选：视频在本机的暂存目录，默认 %TEMP%\remote-phone-media。
 # 放到系统盘之外更稳妥——每个视频都会在本机也留一份。
 setx MEDIA_DIR          "D:\remote-phone-media"
-
-# 每次启动
-cd D:\projects\remote-phone-control
-$env:RELAY_SERVER_WS_URL = "wss://your-domain.com/ws/agent"   # 注意是 wss
-$env:AGENT_ID = "pc-01"
-npm run agent:server
 ```
+
+推荐用仓库里的启动脚本，它会把上面这些**逐项检查并打印就绪状态**，
+缺什么就直接告诉你该设哪一条：
+
+```powershell
+cd D:\projects\remote-phone-control
+.\scripts\start-agent.ps1 -RelayUrl "wss://your-domain.com/ws/agent" -AgentId "pc-01"
+```
+
+输出长这样（`AGENT_SECRET` 缺失时会明确警告，而不是让你等到客户
+下发视频才发现）：
+
+```
+  [就绪] ADB_PATH
+  [就绪] RELAY_SERVER_WS_URL = wss://your-domain.com/ws/agent
+  [就绪] DEVICE_TCP_RANGE = 10.0.0.41-60:5555
+  [缺失] AGENT_SECRET —— 发视频会失败（下载视频时报 401/503）
+  [就绪] MEDIA_DIR = D:\remote-phone-media
+```
+
+也可以临时覆盖而不动持久变量：`-Secret "<密钥>"`、`-MediaDir "D:\..."`。
+
+想直接 `npm run agent:server` 也可以，那就自己把环境变量设好。
 
 启动日志里能直接确认视频通道是否就绪：
 
