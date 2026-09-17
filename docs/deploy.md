@@ -120,7 +120,12 @@ pm2 -v       # 期望 5.x 或更高
 ## 3. 写 relay 配置
 
 变量有五六个，全塞命令行很容易漏，统一写进 `relay/.env`
-（已被 `.gitignore` 忽略，`git pull` 不会碰它）：
+（已被 `.gitignore` 忽略，`git pull` 不会碰它）。
+
+⚠️ **不要用 `cat > relay/.env` 覆盖** —— `>` 是截断写入。
+配过一次 SMTP 之后再被模板覆盖，就只剩模板里那几行，relay 会直接
+拒绝启动（`MAIL_TRANSPORT=smtp 时必须设置环境变量 SMTP_HOST`），
+而你会以为是自己没配。**用编辑器改**：
 
 ```bash
 cd ~/remote-phone-control
@@ -128,7 +133,12 @@ cd ~/remote-phone-control
 # 先生成视频通道的共享密钥，抄下这个值，本机要用同一个
 openssl rand -hex 32
 
-cat > relay/.env <<'ENV'
+nano relay/.env      # 不存在会自动新建
+```
+
+要写入的内容：
+
+```ini
 # 初始管理员。只在「库里还没有管理员」时生效
 ADMIN_PASSWORD=换成你的强密码
 
@@ -140,11 +150,21 @@ NODE_ENV=production
 
 # 邮件通道，见第 6 步；先留 console 也能跑，但客户无法自助注册
 MAIL_TRANSPORT=console
-ENV
+```
 
-# 核对
+核对：
+
+```bash
 grep -v '^#' relay/.env | grep .
 ```
+
+> 只在**全新机器**上才可以用下面这种写法（文件已存在时它会清空内容）：
+>
+> ```bash
+> [ -f relay/.env ] && echo "已存在，请用 nano 编辑" || cat > relay/.env <<'ENV'
+> ...内容...
+> ENV
+> ```
 
 > **优先级**：真实环境变量 > `relay/.env`。加载用的是 Node 内建的
 > `process.loadEnvFile`（需 Node 20.12+），所以「pm2 注入」和「.env」可以共存。
@@ -509,6 +529,9 @@ curl -s https://jyglobal.top/health
 | 现象 | 排查方向 |
 | --- | --- |
 | 站点 502 | relay 没起：`pm2 logs remote-phone-relay --lines 50 --nostream` |
+| `curl` 返回 **000**、`pm2 list` 里 ↺ 次数暴涨 | relay **启动即崩**、被 pm2 反复重启。看 `~/.pm2/logs/remote-phone-relay-error.log`。最常见原因是 `MAIL_TRANSPORT=smtp` 但 `SMTP_*` 没配全（或整行被 `#` 注释了） |
+| `MAIL_TRANSPORT=smtp 时必须设置环境变量 SMTP_HOST` | 去 `relay/.env` 检查 `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` 三行是否都在、都没被 `#` 注释 |
+| `relay/.env` 里配置莫名变少了 | 用 `cat > relay/.env` 覆盖过。`>` 是截断写入，改用 `nano` |
 | 站点 403 Forbidden | nginx 读不到 `/var/www`，或有 `sites-enabled/default` 抢匹配 |
 | 改配置不生效 | 用 `systemctl restart nginx`，不要 `reload` |
 | 浏览器显示旧界面 | 产物没发布（跑 `deploy.sh`），或 `index.html` 被缓存 |

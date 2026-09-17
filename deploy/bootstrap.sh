@@ -106,11 +106,15 @@ cat <<'EOF'
 
   2) 配 relay 环境变量（至少这三项）
        cd ~/remote-phone-control
-       cat > relay/.env <<'ENV'
+       nano relay/.env        # 不存在会自动新建
+
+     写入：
        ADMIN_PASSWORD=<强密码>
        AGENT_SECRET=<openssl rand -hex 32 的输出>
        NODE_ENV=production
-       ENV
+
+     ⚠️ 别用 `cat > relay/.env` —— `>` 是截断写入，会把已配好的
+        SMTP 参数等清空，之后 relay 会拒绝启动，而你以为是自己没配。
 
   3) 部署（拉代码 + 装依赖 + 构建前端 + 发布 + 重启 relay）
        bash deploy/deploy.sh
