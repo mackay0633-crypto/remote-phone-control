@@ -235,7 +235,7 @@ sudo bash deploy/setup-nginx-domain.sh jyglobal.top <你的邮箱>
    并删掉 Ubuntu 自带的 `sites-enabled/default`
 2. `certbot certonly --webroot` 签证书
 3. 把 `deploy/nginx.conf.example` 里的域名替换成你的，装成 80 + 443 完整配置
-4. 自查：打印证书到期时间，并 `curl https://<域名>/health`
+4. 自查：打印证书到期时间，并 `curl https://jyglobal.top/health`
 
 **验证**：
 
@@ -247,7 +247,7 @@ curl -s https://jyglobal.top/health
 `agents` 还是 0 是对的 —— 本机 agent 还没连（第二部分做）。
 
 > **为什么不能直接把 `nginx.conf.example` 拷过去？**
-> 它引用了 `/etc/letsencrypt/live/<域名>/fullchain.pem`，而证书还不存在，
+> 它引用了 `/etc/letsencrypt/live/jyglobal.top/fullchain.pem`，而证书还不存在，
 > `nginx -t` 直接失败；可 certbot 的 webroot 校验又需要 nginx 已经在 80
 > 端口提供服务 —— 死锁。脚本的第一步就是打破它。
 
@@ -493,8 +493,8 @@ curl -s https://jyglobal.top/health
 
 | # | 检查项 | 期望 |
 | --- | --- | --- |
-| 1 | `curl https://<域名>/health` | `{"ok":true,"agents":1,"devices":20}` |
-| 2 | 浏览器打开 `https://<域名>` | 有锁标（证书有效），出登录页 |
+| 1 | `curl https://jyglobal.top/health` | `{"ok":true,"agents":1,"devices":20}` |
+| 2 | 浏览器打开 `https://jyglobal.top` | 有锁标（证书有效），出登录页 |
 | 3 | 管理员登录 | 顶栏出现「控制台 / 自动化 / 管理」 |
 | 4 | 「管理 → 设备」 | 20 台全部在线、已分配状态正确 |
 | 5 | 客户登录 | 只看到分配给自己的设备 |
@@ -595,7 +595,7 @@ sudo certbot renew --dry-run
 | `ADB_PATH` | `adb`（PATH） | adb 可执行文件 |
 | `SCRCPY_PATH` / `SCRCPY_SERVER_PATH` | `scrcpy` / `scrcpy-server` | 画面与触控 |
 | `DEVICE_TCP_RANGE` | 空（关闭保活） | `192.168.9.41-60:65535` |
-| `RELAY_SERVER_WS_URL` | 空（不连 relay） | `wss://<域名>/ws/agent` |
+| `RELAY_SERVER_WS_URL` | 空（不连 relay） | `wss://jyglobal.top/ws/agent` |
 | `AGENT_SECRET` | 空 | 必须与服务器一致 |
 | `MEDIA_DIR` | `%TEMP%\remote-phone-media` | 视频暂存 |
 | `AGENT_ID` | `agent-local` | 多主机时区分 |
