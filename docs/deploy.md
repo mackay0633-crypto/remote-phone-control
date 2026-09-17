@@ -312,6 +312,18 @@ pm2 logs remote-phone-relay --lines 20 --nostream
 - 配置写错时 relay **拒绝启动**，而不是悄悄退回 console —— 这是有意的
 - 不配 SMTP 也能用：管理员在后台直接建客户，邮箱留空即可（第 10 步）
 
+### 让收件箱显示「外贸易」而不是光秃秃的邮箱地址
+
+邮件标题是 `【外贸易】注册验证码`，但**客户在收件箱列表里第一眼看到的是发件人**，
+默认会显示成 `noreply@your-domain.com`。加个显示名就能变成「外贸易」：
+
+```ini
+SMTP_FROM=外贸易 <noreply@your-domain.com>
+```
+
+`Name <addr>` 是标准写法，nodemailer 直接支持。地址部分必须与 `SMTP_USER`
+一致（163 等会校验），但显示名可以是任意文字。改完 `pm2 restart`。
+
 ---
 
 # 第二部分：本机（接手机的 Windows 主机）

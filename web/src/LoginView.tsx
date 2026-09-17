@@ -188,7 +188,7 @@ export function LoginView({ onAuthenticated }: LoginViewProps) {
 
       <section className="auth-card">
         <div className="auth-brand">
-          <div className="eyebrow">Remote Phone Control</div>
+          <div className="eyebrow">外贸易</div>
           <h1>{heading}</h1>
           <p>{description}</p>
         </div>

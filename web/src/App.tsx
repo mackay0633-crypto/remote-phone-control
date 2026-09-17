@@ -145,7 +145,7 @@ export function App() {
         <div className="ambient ambient-b" />
         <section className="auth-card">
           <div className="auth-brand">
-            <div className="eyebrow">Remote Phone Control</div>
+            <div className="eyebrow">外贸易</div>
             <h1>正在恢复会话…</h1>
           </div>
         </section>

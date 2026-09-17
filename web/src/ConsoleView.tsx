@@ -613,7 +613,7 @@ export function ConsoleView({ token, user, onCapabilitiesChanged }: ConsoleViewP
 
       <section className="hero">
         <div className="hero-copy">
-          <div className="eyebrow">Remote Phone Control</div>
+          <div className="eyebrow">外贸易</div>
           <h1>单设备实时控制</h1>
           <p>
             {canControl

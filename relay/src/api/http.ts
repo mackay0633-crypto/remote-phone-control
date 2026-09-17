@@ -571,7 +571,7 @@ async function handleRegisterCode(
     ip: clientIp(req),
     ratePrefix: "regcode",
     auditPrefix: "auth.register_code",
-    subject: "【Remote Phone Control】注册验证码",
+    subject: "【外贸易】注册验证码",
     // 注册本来就要发给尚未注册的邮箱，不存在真假之分
     deliver: true,
     background: false,
@@ -700,7 +700,7 @@ async function handlePasswordResetCode(
     ip: clientIp(req),
     ratePrefix: "resetcode",
     auditPrefix: "auth.password_reset_code",
-    subject: "【Remote Phone Control】重置密码验证码",
+    subject: "【外贸易】重置密码验证码",
     // 账号不存在就不发信——但响应与发信时一模一样（见上面的说明）
     deliver: user !== null,
     background: true,
@@ -894,7 +894,7 @@ async function handleEmailChangeCode(
     ip: clientIp(req),
     ratePrefix: "emailcode",
     auditPrefix: "auth.email_change_code",
-    subject: "【Remote Phone Control】更换邮箱验证码",
+    subject: "【外贸易】更换邮箱验证码",
     // 换绑必须真能收到信才有意义，这里不存在「账号是否存在」的真假之分
     deliver: true,
     background: false,
