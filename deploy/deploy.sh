@@ -53,14 +53,36 @@ sudo chown -R www-data:www-data "$WEB_ROOT"
 echo "    已发布 $(find "$WEB_ROOT" -type f | wc -l) 个文件"
 
 echo
-echo "==> [5/5] 重启 relay"
+echo "==> [5/5] 启动 / 重启 relay"
 if pm2 describe "$PM2_NAME" > /dev/null 2>&1; then
   pm2 restart "$PM2_NAME"
 else
-  echo "    pm2 里没有 $PM2_NAME，跳过（首次部署请手动 pm2 start）"
+  # 首次部署直接 start。原先这里只打印「请手动 pm2 start」，
+  # 结果是一个很隐蔽的失败：脚本全绿、站点却是 502，因为进程根本没起来。
+  if [ -f "$REPO_DIR/relay/.env" ]; then
+    echo "    pm2 里没有 $PM2_NAME，首次启动（配置取自 relay/.env）"
+  else
+    echo "    ⚠️ 没找到 relay/.env，relay 会用默认值启动："
+    echo "       管理员密码随机生成，只在日志里出现一次"
+    echo "       AGENT_SECRET 为空 → 发视频会失败（下载 503）"
+  fi
+  pm2 start npm --name "$PM2_NAME" -- run relay:start
+  echo "    别忘了 pm2 save，否则服务器重启后不会自动拉起"
 fi
 
 echo
-echo "==> 完成。健康检查："
-curl -s http://127.0.0.1/health || echo "    （relay 未响应，检查 pm2 logs）"
+echo "==> 健康检查（最多等 20 秒）"
+ready=0
+for _ in $(seq 1 20); do
+  if curl -fsS --max-time 2 http://127.0.0.1:5081/health 2>/dev/null; then
+    echo
+    ready=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$ready" -ne 1 ]; then
+  echo "    relay 20 秒内没起来，看日志： pm2 logs $PM2_NAME --lines 50 --nostream"
+fi
 echo
