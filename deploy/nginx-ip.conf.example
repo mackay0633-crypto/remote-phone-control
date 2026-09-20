@@ -1,0 +1,139 @@
+# remote-phone-control —— 纯 IP（无域名）部署用的 nginx 配置
+#
+# ── 与 nginx.conf.example 的区别 ────────────────────────────────
+#
+# 那份配置的 HTTP 块会把所有请求 `301` 到 https://，HTTPS 块又引用
+# `/etc/letsencrypt/live/<域名>/...` 的证书。**没有域名就签不了传统证书**，
+# 于是 `nginx -t` 直接失败，或者站点打不开。
+#
+# 这份只监听 80、不引用任何证书，直接提供页面与 API，
+# 所以**没有域名也能立刻跑起来**。
+#
+# ⚠️ 代价必须清楚：HTTP 是明文。走这条链路的内容包括客户密码、会话令牌、
+#    手机画面（H.264 帧）、触控指令，以及 agent 的 AGENT_SECRET。
+#    只适合临时验证，不要拿它给真实客户用。升级 HTTPS 的做法见文件末尾。
+#
+# ── 用法 ────────────────────────────────────────────────────────
+#
+#   sudo cp deploy/nginx-ip.conf.example /etc/nginx/sites-available/remote-phone-control
+#   sudo ln -sf /etc/nginx/sites-available/remote-phone-control /etc/nginx/sites-enabled/
+#   sudo rm -f /etc/nginx/sites-enabled/default     # 关键：不删会被它抢先匹配
+#   sudo mkdir -p /var/www/certbot
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# 然后浏览器直接开 http://<服务器IP> 就应该看到登录页。
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    # 没有域名时用 `_` 兜住任意 Host（包括直接写 IP 访问）。
+    # 这里必须显式写 default_server：否则 Debian/Ubuntu 自带的默认站点
+    # 会先把请求接走，症状是「配置看着没错，但返回的是别的页面」。
+    server_name _;
+
+    # ACME 校验目录。将来若要给这个 IP 签证书（见文末），
+    # webroot 模式会往这里放挑战文件，所以现在就留好，省得再改一次。
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # 视频上传用得到：默认 1MB 会让所有视频直接 413。
+    # 这个值与 relay 的 VIDEO_MAX_BYTES 默认值（512MB）保持一致，
+    # 改一边就要改另一边，否则 nginx 先拦或 relay 先拦，报错位置会很迷惑。
+    client_max_body_size 512m;
+
+    # ── 前端静态文件 ─────────────────────────────────────────
+    # 指向 /var/www，**不是**仓库里的 web/dist。
+    # 原因：Ubuntu 家目录是 0750，nginx 以 www-data 运行进不去，会 403。
+    # 产物由 deploy/deploy.sh 发布到这里。
+    root /var/www/remote-phone-control;
+    index index.html;
+
+    # SPA：找不到的路径一律回 index.html，交给前端路由
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    # ── 账号 / 管理 API ──────────────────────────────────────
+    location /api/ {
+        proxy_pass http://127.0.0.1:5081;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        # 注意这里是 http，因为本文件不监听 443
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_request_buffering off;
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
+    }
+
+    # ── WebSocket ────────────────────────────────────────────
+    # 覆盖 /ws/agent（Agent 接入）、/ws/viewer（控制通道）、/ws/viewer/stream（视频流）。
+    # 因为这里有 /ws/，**5081 不需要对公网开放**：
+    # Agent 用 ws://<服务器IP>/ws/agent 走的就是这个 80 端口。
+    location /ws/ {
+        proxy_pass http://127.0.0.1:5081;
+        proxy_http_version 1.1;
+
+        # 这两行是 WebSocket 必须的，缺了会握手失败
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host      $host;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        # 视频流是长连接，nginx 默认 60 秒无数据就断开 —— 必须调大
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+
+        # 边收边转，不要缓冲，否则画面延迟会越积越多
+        proxy_buffering off;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:5081/health;
+        proxy_set_header Host $host;
+    }
+}
+
+# ── 以后想升级到 HTTPS（仍然不需要域名）─────────────────────────
+#
+# Let's Encrypt 从 2026-01-15 起正式支持**给 IP 地址签证书**，
+# 所以没有域名也能有浏览器信任的 HTTPS。要点：
+#
+#   1. 证书有效期约 160 小时（6 天多），且 IP 证书**必须**用 shortlived 配置
+#   2. 需要 certbot 5.4+（webroot 模式支持 IP；`--ip-address` 参数 5.3+ 才有）
+#   3. nginx/apache 插件**不支持** IP 证书，只能拿到文件后手工让 nginx 加载：
+#        /etc/letsencrypt/live/<IP>/fullchain.pem
+#        /etc/letsencrypt/live/<IP>/privkey.pem
+#   4. **必须配自动续期 + --deploy-hook 让 nginx 重新加载证书**。
+#      6 天就过期，续期一旦悄悄失败，站点会在几天内突然报证书错误。
+#
+# 大致的申请命令（先加 --staging 试通再正式签）：
+#
+#   sudo certbot certonly --staging \
+#     --preferred-profile shortlived \
+#     --webroot --webroot-path /var/www/certbot \
+#     --ip-address <你的公网IP>
+#
+# 签成之后：把本文件的 80 块改成跳转，另加一个 443 块引用上面两个证书路径，
+# 并把 Agent 的 RELAY_SERVER_WS_URL 从 ws:// 改成 wss://。
+#
+# 参考：
+#   https://letsencrypt.org/2026/03/11/shorter-certs-certbot.html
+#   https://www.abetterinternet.org/post/ip-and-6day-general-availability/
+#
+# 如果你的运维精力有限，买个最便宜的域名（.top/.xyz 一年几美元）反而更省事：
+# 有 90 天证书、有自动续期插件、地址也好记。
