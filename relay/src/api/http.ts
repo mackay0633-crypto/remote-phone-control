@@ -1072,7 +1072,7 @@ async function handleAdmin(
   }
 
   if (userMatch && method === "DELETE") {
-    handleAdminDeleteUser(ctx, res, auth, Number(userMatch[1]));
+    await handleAdminDeleteUser(ctx, res, auth, Number(userMatch[1]));
     return;
   }
 
@@ -1227,7 +1227,23 @@ async function handleAdminResetPassword(
   sendJson(res, 200, { ok: true, revokedSessions: revoked });
 }
 
-function handleAdminDeleteUser(ctx: ApiContext, res: ServerResponse, auth: AuthResult, userId: number): void {
+/**
+ * 删除客户账号。
+ *
+ * ⚠️ **必须连视频素材文件一起删。** `videos.user_id` 是
+ * `ON DELETE CASCADE`，所以 `DELETE FROM users` 会把素材**记录**清干净 ——
+ * 但磁盘上的 `<RELAY_MEDIA_DIR>/<videoId>/` 不会被数据库连带删除。
+ *
+ * 只删记录不删文件会造成一个查不回来的泄漏：行没了就再也查不出「该删哪些
+ * 目录」，每删一个上传过素材的客户就永久留下几十到几百 MB 的孤儿文件。
+ * 所以顺序是**先收集 videoId → 删账号 → 再删文件**，不能颠倒。
+ */
+async function handleAdminDeleteUser(
+  ctx: ApiContext,
+  res: ServerResponse,
+  auth: AuthResult,
+  userId: number
+): Promise<void> {
   const target = findUserById(ctx.db, userId);
   if (!target) {
     fail(res, 404, "用户不存在");
@@ -1239,14 +1255,38 @@ function handleAdminDeleteUser(ctx: ApiContext, res: ServerResponse, auth: AuthR
     return;
   }
 
+  // 趁级联删除还没发生，先把该用户的素材 id 收集起来
+  const ownedVideos = listVideosForUser(ctx.db, userId);
+
   // 先收回设备再删账号，避免留下悬空的归属
   const released = releaseAllDevices(ctx.db, userId);
   ctx.db.prepare("DELETE FROM users WHERE id = ?").run(userId);
 
-  notifyAccessChanged(ctx);
-  writeAudit(ctx.db, auth.user.id, "admin.user_deleted", target.username, { releasedDevices: released });
+  // 删库之后才动文件：数据库是权威，先保证库干净。
+  // 单个文件删不掉不能把整个请求判失败（账号已经删了），记日志即可 ——
+  // 孤儿文件还能靠扫盘回收，而库里留下指向已删账号的行会让配额统计出错。
+  let removedVideos = 0;
+  for (const video of ownedVideos) {
+    try {
+      await removeVideoFile(video.id);
+      removedVideos += 1;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[api] 清理素材文件失败（user=${target.username} videoId=${video.id}）: ${detail}`);
+      writeAudit(ctx.db, auth.user.id, "admin.user_deleted_video_failed", target.username, {
+        videoId: video.id,
+        error: detail
+      });
+    }
+  }
 
-  sendJson(res, 200, { ok: true, releasedDevices: released });
+  notifyAccessChanged(ctx);
+  writeAudit(ctx.db, auth.user.id, "admin.user_deleted", target.username, {
+    releasedDevices: released,
+    removedVideos
+  });
+
+  sendJson(res, 200, { ok: true, releasedDevices: released, removedVideos });
 }
 
 async function handleAdminAssignDevice(

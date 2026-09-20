@@ -28,9 +28,14 @@
  */
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 import { sanitizeVideoFilename as relaySanitize } from "../src/videos/store.ts";
 import { sanitizeVideoFilename as agentSanitize } from "../../agent/src/autojs/autojs-validation.ts";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BASE = process.env.TEST_BASE ?? "http://127.0.0.1:5091";
 const WS_BASE = BASE.replace(/^http/, "ws");
@@ -39,6 +44,20 @@ const ADMIN = {
   password: requireEnv("TEST_ADMIN_PASSWORD")
 };
 const AGENT_SECRET = requireEnv("TEST_AGENT_SECRET");
+
+/**
+ * relay 落盘素材的根目录，用来**直接查文件系统**证明文件真的被删了。
+ *
+ * 为什么不能靠接口判断：删掉用户之后 `GET /api/agent/videos/:id` 一定返回
+ * 404「视频不存在」—— 因为数据库记录没了，跟文件在不在无关。所以只有看
+ * 磁盘才能区分「记录删了」和「文件也删了」。
+ *
+ * 默认值与测试文档里的启动命令一致（`RELAY_MEDIA_DIR=..\.tmp-test\videos`）。
+ * 若指向别处，下面会用「删之前文件是否存在」做前置校验，校验不过就报 SKIP
+ * 而不是假装通过 —— 否则路径写错会让断言永远成立。
+ */
+const MEDIA_DIR =
+  process.env.TEST_RELAY_MEDIA_DIR ?? resolve(__dirname, "..", "..", ".tmp-test", "videos");
 
 function requireEnv(name) {
   const value = process.env[name]?.trim();
@@ -552,6 +571,81 @@ async function main() {
 
   // 顺手清掉同名测试留下的那个，否则反复运行会把共用库撑大
   await api("DELETE", `/api/videos/${dup.body.video.id}`, undefined, myToken);
+
+  // ══════════════ 11. 删除用户必须连素材文件一起删 ══════════════
+  console.log("--- 11. 删用户连文件一起删 ---");
+
+  // 造一个一次性的客户，专门用来删
+  const DOOMED = { username: "vid_doomed", email: "vid_doomed@example.com", password: "CustomerPass123" };
+  await ensureRegistered(DOOMED);
+  const doomed = (await api("GET", "/api/admin/users", undefined, adminToken)).body.users
+    .find((u) => u.username === DOOMED.username);
+  chk("一次性客户已创建", Boolean(doomed), true);
+
+  await api("PATCH", `/api/admin/users/${doomed.id}`, {
+    quota: { maxDevices: 0, maxStorageBytes: 0 },
+    capabilities: { can_view_devices: true, can_upload_video: true, can_send_video: true }
+  }, adminToken);
+
+  const doomedToken = (await api("POST", "/api/auth/login", {
+    username: DOOMED.username,
+    password: DOOMED.password
+  })).body.token;
+
+  const doomedUpload = await uploadBytes("要被删掉的素材.mp4", bytes, doomedToken);
+  chk("一次性客户上传成功", doomedUpload.status, 201);
+
+  const doomedVideoId = doomedUpload.body.video.id;
+  const doomedDir = join(MEDIA_DIR, doomedVideoId);
+
+  // 前置校验：先确认文件确实在磁盘上，否则后面的「不存在」断言没有意义
+  const existedBefore = existsSync(doomedDir);
+  chk("删之前素材目录确实存在于磁盘", existedBefore, true);
+  if (!existedBefore) {
+    console.log(`        ⚠️ 找不到 ${doomedDir}`);
+    console.log("        TEST_RELAY_MEDIA_DIR 没指向 relay 的 RELAY_MEDIA_DIR，");
+    console.log("        下面的文件系统断言会被跳过（不假装通过）。");
+  }
+
+  const doomedDelete = await api("DELETE", `/api/admin/users/${doomed.id}`, undefined, adminToken);
+  chk("删除账号成功", doomedDelete.status, 200);
+  chk("回执报告清理了 1 个素材", doomedDelete.body?.removedVideos, 1);
+
+  if (existedBefore) {
+    chk("素材目录已从磁盘删除", existsSync(doomedDir), false);
+  } else {
+    console.log("  SKIP  素材目录是否删除（无法定位文件系统路径）");
+  }
+
+  // 账号确实没了：用原密码登录应失败
+  const loginAfter = await api("POST", "/api/auth/login", {
+    username: DOOMED.username,
+    password: DOOMED.password
+  });
+  chk("账号已删除（登录失败）", loginAfter.status === 200, false);
+
+  // 审计里要留下清了多少个，否则事后无法核对
+  const audit = await api("GET", "/api/admin/audit?limit=20", undefined, adminToken);
+  const deleteEntry = audit.body.entries.find(
+    (e) => e.action === "admin.user_deleted" && e.target === DOOMED.username
+  );
+  chk("审计记录了删号", Boolean(deleteEntry), true);
+
+  if (deleteEntry) {
+    console.log(`        detail = ${deleteEntry.detail}`);
+    chk("detail 里 removedVideos=1", /"removedVideos":1/.test(deleteEntry.detail ?? ""), true);
+  }
+
+  // 没有素材的用户也要能删（不能因为 collecting 空数组就出问题）
+  const EMPTY = { username: "vid_empty", email: "vid_empty@example.com", password: "CustomerPass123" };
+  await ensureRegistered(EMPTY);
+  const emptyUser = (await api("GET", "/api/admin/users", undefined, adminToken)).body.users
+    .find((u) => u.username === EMPTY.username);
+  if (emptyUser) {
+    const emptyDelete = await api("DELETE", `/api/admin/users/${emptyUser.id}`, undefined, adminToken);
+    chk("删除无素材的用户也成功", emptyDelete.status, 200);
+    chk("清理数量为 0", emptyDelete.body?.removedVideos, 0);
+  }
 
   viewer.close();
   otherViewer.close();
