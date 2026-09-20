@@ -396,27 +396,83 @@ const MAX_LIST_ITEM_LENGTH = 100;
 const MAX_LIST_LENGTH = 50;
 
 /**
+ * 模板里那些「无引号占位符」的默认值。
+ *
+ * ⚠️ **这不是锦上添花，是必须的。**
+ *
+ * `scripts_renderer/buildDayilWork.js` 只替换**配置里出现过的键**：
+ *
+ *   for (const [key, val] of Object.entries(config)) {
+ *     code = code.replace(new RegExp(`{{${key}}}`, 'g'), valueStr);
+ *   }
+ *
+ * 而模板里有 15 个占位符。调用方少给一个，生成出来的脚本就会留下
+ * `var SWIPE_COUNT_MIN = {{SWIPE_COUNT_MIN}};` —— `{{` 在 JS 里是非法
+ * token，Rhino 直接抛 `invalid property id`，**手机端脚本 0.003 秒就退出**。
+ *
+ * 界面只暴露了 5 个参数，所以必须在这里补齐其余 10 个，
+ * 否则「养号」这个功能从一开始就是坏的。
+ *
+ * 取值与 autojs 自己的表单默认值一致（`scripts_pages/DayilWork.html`
+ * 里各 input / textarea 的初始 value），这样从本平台下发的行为与
+ * 在那台机器的 autojs 界面里直接点「生成」是一致的。
+ *
+ * 注：`SWIPE_COUNT` 是主循环次数（模板 1251 行
+ * `while (currentSwipeCount < SWIPE_COUNT)`）；`SWIPE_COUNT_MIN/MAX` 是
+ * 「点击随机创作者」分支内部的滑动次数（模板 817 行），两者互不覆盖，
+ * 所以默认成 3/6 不会把用户要的 30 次静默变成 6 次。
+ */
+const DAYIL_DEFAULTS: Record<string, unknown> = {
+  SWIPE_COUNT: 10,
+  SWIPE_COUNT_MIN: 3,
+  SWIPE_COUNT_MAX: 6,
+  PLAY_DURATION: 5000,
+  LIKE_PROBABILITY: 30,
+  FOLLOW_PROBABILITY: 5,
+  COMMENT_PROBABILITY: 20,
+  FAVORITE_PROBABILITY: 25,
+  SEARCH_PROBABILITY: 50,
+  WAIT_AFTER_SEARCH: 7000,
+  LIVE_WATCH_DURATION: 15000,
+  LIVE_CHAT_CONTENT: ["hello", "nice live", "great show"],
+  TALK_CONTENT: ["cool", "awesome", "wow", "nice"],
+  SEARCH_KEYWORDS: ["technology", "music", "travel"],
+  // buildDayilWork 自己会兜底这一项，这里也给上：少一个占位符来源就少一处隐患
+  TARGET_ACCOUNTS: []
+};
+
+/** 默认值的浅拷贝；数组必须复制，否则调用方改动会污染这份共享常量 */
+function dayilDefaults(): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(DAYIL_DEFAULTS).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value])
+  );
+}
+
+/**
  * 校验养号配置。
  *
- * 三条控制：
+ * 四条控制：
  *   1. **键名白名单** —— buildDayilWork 用调用方给的键去构造正则匹配模板占位符，
  *      允许任意键等于允许调用方挑选要替换的占位符
  *   2. **数值键只接受有限数字** —— 这些占位符无引号，字符串会被当作代码
  *   3. **列表键只接受短字符串数组**
+ *   4. **补齐调用方没给的键** —— 见 DAYIL_DEFAULTS 的说明：漏一个占位符
+ *      就会让手机上的脚本因语法错误秒退
  *
  * 注：SCRIPT_RUN_ID / SCRIPT_TYPE 虽在模板中，但 buildDayilWork 会用自身 meta
  * 覆盖它们，调用方无法控制，因此不在白名单内（传了也会被拒绝）。
  */
 export function validateDayilWorkConfig(raw: unknown): ValidationResult<Record<string, unknown>> {
   if (raw === undefined || raw === null) {
-    return ok({});
+    return ok(dayilDefaults());
   }
 
   if (typeof raw !== "object" || Array.isArray(raw)) {
     return err("config 必须是一个对象");
   }
 
-  const result: Record<string, unknown> = {};
+  // 从默认值出发，调用方给了什么就覆盖什么
+  const result: Record<string, unknown> = dayilDefaults();
 
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const numericRule = DAYIL_NUMERIC_KEYS[key];

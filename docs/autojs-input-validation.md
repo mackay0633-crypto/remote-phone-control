@@ -141,6 +141,39 @@ cmd.exe 收到: echo adb push "D:/media/my " & echo CMD-INJECTION-WORKED & " vid
 | 列表（4 个） | `SEARCH_KEYWORDS` `TALK_CONTENT` `TARGET_ACCOUNTS` `LIVE_CHAT_CONTENT` | 字符串数组，单条 ≤100 字符，最多 50 项 |
 | 其他 | — | **一律拒绝** |
 
+#### ⚠️ 还必须「补齐」调用方没给的键（否则脚本在手机上秒退）
+
+`scripts_renderer/buildDayilWork.js` 只替换**配置里出现过的键**：
+
+```js
+for (const [key, val] of Object.entries(config)) {
+  code = code.replace(new RegExp(`{{${key}}}`, 'g'), valueStr);
+}
+```
+
+而 `DayilWork_template.js` 里有 **15 个**由调用方提供的 `{{占位符}}`。
+少给一个，生成出来的脚本就会留下：
+
+```js
+var SWIPE_COUNT_MIN = {{SWIPE_COUNT_MIN}};   // 模板第 8 行
+```
+
+`{{` 在 JS 里是非法 token，Rhino 在**解析阶段**就失败，手机上表现为
+**0.003 秒退出，报 `invalid property id (...#8)`** —— 脚本一行都没执行，
+而服务端日志一切正常（脚本确实生成并推送成功了）。
+
+所以 `validateDayilWorkConfig` 的做法是**从默认值出发、调用方给了什么就覆盖什么**，
+默认值取 autojs 自己表单的初始值（`scripts_pages/DayilWork.html`），
+保证从本平台下发与在那台机器的 autojs 界面里直接点「生成」行为一致。
+
+> 注：`SWIPE_COUNT` 是主循环次数（模板 `while (currentSwipeCount < SWIPE_COUNT)`），
+> `SWIPE_COUNT_MIN/MAX` 是「点击随机创作者」分支内部的滑动次数（模板 817 行），
+> 两者互不覆盖。
+>
+> 回归测试：`agent/dev/dayil-config-test.mjs`（`npm run test:dayil`）。
+> 它会把真实模板渲染一遍，断言**没有残留 `{{`** 且结果**能被 JS 引擎解析**；
+> 还会用「界面只发 5 个键」反向复现事故，确保这个测试真的抓得住问题。
+
 ### 3.3 视频文件名 —— 自动规范化（用户无感）
 
 | 步骤 | 处理 |
