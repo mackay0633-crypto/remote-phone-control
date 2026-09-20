@@ -198,6 +198,45 @@ var SWIPE_COUNT_MIN = {{SWIPE_COUNT_MIN}};   // 模板第 8 行
 这里刻意选择「拒绝」而非「自动改名」：磁盘上的真实文件名必须与传给 autojs 的路径一致，
 静默改名会导致 `adb push` 找不到文件。
 
+### 3.6 自由文本（`product_name` / `location`）—— 必须单行化
+
+这两个字段在发视频模板里是**双引号内**的占位符：
+
+```js
+let PRODUCT_NAME = "{{PRODUCT_NAME}}";
+```
+
+而渲染器的转义只处理反斜杠与引号，**不处理换行**：
+
+```js
+const escapeForDQ = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+```
+
+传 `"第一行\n第二行"` 会生成跨行的字符串字面量 → 未终止 → Rhino 解析失败 →
+手机上**脚本秒退**，而服务端一切正常。与养号那次是同一类症状、不同成因。
+
+处理方式与文件名一致：**规范化而非拒绝**（这两个字段语义上就是单行文本）——
+连续空白（含 `\n` `\r` `\t` 与 U+2028 / U+2029）压成一个空格，
+再去掉剩余的 C0 / C1 控制字符。用户粘贴带换行的内容会无感地变正常。
+
+> `titles` **不需要**这样处理：它走 `JSON.stringify` 注入，换行会被正确转义成 `\n`。
+
+**发视频模板的 8~9 个占位符已逐个审计**，每个都有保障：
+
+| 占位符 | 保障 |
+|---|---|
+| `TARGET_ACCOUNT` | `validateAccounts` 限制 `[\p{L}\p{N}._-]` |
+| `TARGET_VIDEO` | `validateVideoPaths` 要求 basename 已规范化 |
+| `SCHEDULED_TIME` | `validateSendTime` 严格正则 |
+| `TITLE_TOPIC` | `JSON.stringify` |
+| `PRODUCT_NAME` / `LOCATION_TEXT` | `validateText`，已单行化（见上） |
+| `BATCH_ASSIGNMENTS` / `BATCH_ACCOUNTS` / `BATCH_VIDEOS` | `JSON.stringify` + 各自校验 |
+| `SCRIPT_RUN_ID` / `SCRIPT_TYPE` | 渲染器自己写入 |
+
+回归测试：`agent/dev/send-video-render-test.mjs`（`npm run test:send-video-render`）。
+它 **require 真实的 `buildsendVedio.js`**、用真实模板渲染，然后断言没有残留
+`{{` 且结果能被 JS 引擎解析 —— 复刻渲染逻辑的测试只能证明「我抄对了」。
+
 ---
 
 ## 4. 实测结果

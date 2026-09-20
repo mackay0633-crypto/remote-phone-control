@@ -305,7 +305,31 @@ export function validateTitles(raw: unknown): ValidationResult<string[]> {
   return ok(result);
 }
 
-/** 校验商品名 / 定位等自由文本字段。 */
+/**
+ * 校验商品名 / 定位等自由文本字段。
+ *
+ * ⚠️ **必须把换行和控制字符清掉**，这不是洁癖：
+ *
+ * 这两个字段在模板里是**双引号内**的占位符：
+ *
+ *   let PRODUCT_NAME = "{{PRODUCT_NAME}}";
+ *
+ * 而渲染器的转义只处理反斜杠和引号：
+ *
+ *   const escapeForDQ = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+ *
+ * 换行不在它的处理范围内。传 `"第一行\n第二行"` 会生成
+ * `let PRODUCT_NAME = "第一行` ↵ `第二行";` —— 字符串字面量未终止，
+ * Rhino 在解析阶段就失败，手机上表现为脚本**秒退**，而服务端一切正常。
+ * （实测确认：见 `agent/dev/send-video-render-test.mjs` 第 3 组断言。）
+ *
+ * 因为这两个字段语义上就是**单行**文本，这里按「规范化而非拒绝」处理：
+ * 把连续空白压成一个空格、去掉控制字符。用户粘贴带换行的内容时会
+ * 无感地变正常，而不是被打回。
+ *
+ * 注：`titles` 不需要这样处理 —— 它走 `JSON.stringify` 注入，换行会被
+ * 正确转义成 `\n`。
+ */
 export function validateText(raw: unknown, field: string, maxLength = MAX_TEXT_LENGTH): ValidationResult<string> {
   if (raw === undefined || raw === null) {
     return ok("");
@@ -315,7 +339,13 @@ export function validateText(raw: unknown, field: string, maxLength = MAX_TEXT_L
     return err(`${field} 必须是字符串`);
   }
 
-  const value = raw.trim();
+  // 1) 连续空白（含 \n \r \t 以及 U+2028 / U+2029 行分隔符）压成一个空格
+  // 2) 去掉剩下的 C0 / C1 控制字符（NUL、BEL 之类，留着也没意义）
+  const value = raw
+    .replace(/\s+/gu, " ")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/gu, "")
+    .trim();
+
   if (value.length > maxLength) {
     return err(`${field} 最长 ${maxLength} 字符`);
   }
