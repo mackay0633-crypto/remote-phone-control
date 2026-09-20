@@ -523,6 +523,39 @@ curl -s https://jyglobal.top/health
 
 ## 15. 逐项检查
 
+### 先确认部署真的生效
+
+`deploy.sh` 跑完**不等于**新版本真的上线了。它中途失败会直接中止
+（开头是 `set -euo pipefail`），但如果你只瞥了一眼开头就以为成了，
+就会对着旧页面找半天问题。三条命令分别验证三段：
+
+```bash
+# 1) 线上页面：nginx 真的在提供新产物
+curl -s https://jyglobal.top | grep -o '<title>[^<]*</title>'
+#   期望 <title>外贸易</title>
+
+# 2) 发布目录：打包产物确实被换掉了
+ls -l --time-style=long-iso /var/www/remote-phone-control/index.html
+grep -l '外贸易' /var/www/remote-phone-control/assets/*.js
+#   期望打印出 index-<hash>.js，且 index.html 的时间是刚刚
+
+# 3) relay：新代码在跑，邮件仍是 smtp 模式
+pm2 logs remote-phone-relay --lines 12 --nostream | grep -E 'mail:|server ready'
+#   期望 [relay] server ready at ... 与 [relay] mail: smtp（...）
+```
+
+为什么值得单独列出来：**前端有两份副本** —— 仓库里的 `web/dist`，和 nginx
+实际读的 `/var/www/remote-phone-control`。它们最容易不同步（改了代码忘了发布
+是这里最常见的失误），所以第 2 条刻意查 `/var/www` 那一份，**查仓库里的
+`web/dist` 没有意义**。`deploy.sh` 的存在就是为了消除这个风险，但前提是你
+确实跑了它、而且它跑完了。
+
+> 第 1 条如果还是旧标题，先 `Ctrl+Shift+R` 强刷再判断。
+> 正常情况下不需要：`index.html` 是 `no-store`，打包产物文件名带内容哈希，
+> 构建一变文件名就变。真的一直是旧的，才说明第 4 步发布失败。
+
+### 完整验收表
+
 | # | 检查项 | 期望 |
 | --- | --- | --- |
 | 1 | `curl https://jyglobal.top/health` | `{"ok":true,"agents":1,"devices":20}` |
@@ -559,6 +592,9 @@ curl -s https://jyglobal.top/health
 | 「autojs 未激活」 | 主机上的外贸易需要先完成激活 |
 | 「所选视频存在同名文件」 | 同一批里两个视频规范化后同名，改名重传 |
 | 收不到注册验证码 | `MAIL_TRANSPORT=console`，或 SPF/DKIM 没过（进垃圾箱） |
+| `deploy.sh` 在「[1/5] 拉取代码」就退出 | `git pull` 失败会因 `set -e` 中止整个脚本（**好消息是 relay 没被动过，站点无中断**）。修好拉取再重跑 |
+| `git pull` 报 `GnuTLS recv error (-110)` / `Empty reply from server` / `Connection was reset` | 到 github.com 的 HTTPS 被掐。先 `git config --global http.version HTTP/1.1` 重试；仍不通就换 SSH（见下） |
+| 需要长期稳定的拉取通道 | 给服务器配一把部署密钥，remote 换成 SSH。GitHub：仓库 → Settings → Deploy keys（只拉代码就别勾 write access）。443 入口：`ssh://git@ssh.github.com:443/...` |
 
 ---
 
@@ -575,6 +611,16 @@ pm2 logs remote-phone-relay
 pm2 restart remote-phone-relay
 pm2 status
 ```
+
+> **只做更新就永远只有这一条命令。** 它固定做五件事，只改后端也会重建前端、
+> 只改前端也会重启 relay —— 都是无害的。这是故意的：宁可多做一个动作，
+> 也不要因为「这次只改了 XX」而漏掉某一步。忘了发布前端产物是这里最常见的失误。
+>
+> 跑的时候 `npm ci` 会先删 `node_modules`，站点会短暂 502，几秒到几十秒。
+>
+> `git pull` 是脚本的第一步，也是唯一会「静默中止整个脚本」的一步
+> （`set -e`）。拉取失败时站点不会中断，但也**什么都没更新** ——
+> 拼错脚本名、GitHub 连不上都会走到这里，详见第 16 节故障对照。
 
 **备份 / 搬迁数据**（账号 + 设备归属 + 视频素材）：
 
