@@ -163,6 +163,29 @@ npm run build --workspace web      # 产物在 web/dist/
 
 **不需要任何构建时变量**，产物本身就是通用的。
 
+### 改 UI 时先截图，别靠"感觉好点了"
+
+改 CSS 最容易犯的两个错：「以为好看了其实更糟」和「改了某个元素把它挤出视口」。
+`scripts/dev-screenshot.mjs` 直连 Chrome DevTools Protocol（零依赖，
+用 Node 内置的 WebSocket），先截"改之前"、改完再截"改之后"，两张摆一起看：
+
+```bash
+node scripts/dev-web-test.mjs            # 另开窗口：起前端 + relay + 假 agent
+node scripts/dev-screenshot.mjs --out .tmp-test/before.png
+# …改 CSS…
+npm run build --workspace web
+node scripts/dev-screenshot.mjs --out .tmp-test/after.png
+```
+
+它自己会登录（默认 `admin` / `DevTest123456`）、把 token 写进 localStorage，
+再用 `--view automation|admin` 切页签，最后整页截图。浏览器用临时 profile，
+不碰你日常那个。
+
+> ⚠️ **注意地址用 `127.0.0.1` 时前端会走"本地直连模式"**（见 `api/client.ts`
+> 的来源判断），自动化页会显示"仅在部署环境下可用"，而且控制台读的是本机
+> agent 5071 上的真机而不是假 agent。想验证中继模式的页面，得临时带
+> `VITE_RELAY_WS_BASE_URL` 构建 —— **看完记得重新纯净构建**，别把地址烤进产物。
+
 > 早先这里有个隐患：`scripts/dev-web-test.mjs` 从前让前端**跨源**直连
 > `:5091`，因此要求用 `VITE_RELAY_WS_BASE_URL` 构建，把地址烤进产物 ——
 > 那份 `web/dist` 一旦被误传到服务器，客户浏览器会去连自己的
