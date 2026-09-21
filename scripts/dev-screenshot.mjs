@@ -59,6 +59,8 @@ const HEIGHT = Number(args.height ?? 1100);
 const USERNAME = String(args.user ?? "admin");
 const PASSWORD = String(args.password ?? process.env.TEST_ADMIN_PASSWORD ?? "DevTest123456");
 const SETTLE_MS = Number(args.settle ?? 2500);
+/** 静态页/探针页没有账号系统，跳过登录与 localStorage 注入 */
+const NO_AUTH = Boolean(args["no-auth"]);
 
 const BROWSERS = [
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -152,20 +154,26 @@ async function main() {
   }
 
   // 1) 登录拿 token + user（session.ts 里就存在 localStorage）
-  const loginRes = await fetch(`${URL_BASE}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: USERNAME, password: PASSWORD })
-  });
+  let session = null;
 
-  if (!loginRes.ok) {
-    console.error(`登录失败（HTTP ${loginRes.status}）：${await loginRes.text()}`);
-    console.error("提示：dev-web-test.mjs 默认管理员密码是 DevTest123456，可用 TEST_ADMIN_PASSWORD 覆盖。");
-    process.exit(1);
+  if (!NO_AUTH) {
+    const loginRes = await fetch(`${URL_BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: USERNAME, password: PASSWORD })
+    });
+
+    if (!loginRes.ok) {
+      console.error(`登录失败（HTTP ${loginRes.status}）：${await loginRes.text()}`);
+      console.error("提示：dev-web-test.mjs 默认管理员密码是 DevTest123456，可用 TEST_ADMIN_PASSWORD 覆盖。");
+      process.exit(1);
+    }
+
+    session = await loginRes.json();
+    console.log(`已登录：${session.user.username}（${session.user.role}）`);
+  } else {
+    console.log("跳过登录（--no-auth）");
   }
-
-  const session = await loginRes.json();
-  console.log(`已登录：${session.user.username}（${session.user.role}）`);
 
   // 2) 起 headless 浏览器（临时 profile，绝不碰你日常用的那个）
   const debugPort = 9200 + Math.floor(Math.random() * 300);
@@ -226,15 +234,17 @@ async function main() {
     await cdp.send("Page.navigate", { url: URL_BASE });
     await cdp.waitForEvent("Page.loadEventFired");
 
-    await cdp.evaluate(`
-      localStorage.setItem("rpc.session.token", ${JSON.stringify(session.token)});
-      localStorage.setItem("rpc.session.user", ${JSON.stringify(JSON.stringify(session.user))});
-      "ok"
-    `);
+    if (session) {
+      await cdp.evaluate(`
+        localStorage.setItem("rpc.session.token", ${JSON.stringify(session.token)});
+        localStorage.setItem("rpc.session.user", ${JSON.stringify(JSON.stringify(session.user))});
+        "ok"
+      `);
 
-    // 4) 重新加载，让应用带着会话启动
-    await cdp.send("Page.navigate", { url: URL_BASE });
-    await cdp.waitForEvent("Page.loadEventFired");
+      // 4) 重新加载，让应用带着会话启动
+      await cdp.send("Page.navigate", { url: URL_BASE });
+      await cdp.waitForEvent("Page.loadEventFired");
+    }
 
     // 5) 切视图：顶部导航按钮的文本就是视图名
     if (VIEW !== "console") {
@@ -249,6 +259,27 @@ async function main() {
         })()
       `);
       console.log(`切到「${label}」：${clicked}`);
+    }
+
+    // 5b) 再按文字点一个按钮（用来切子标签页，如「养号」/「发视频」）
+    if (args.click) {
+      const target = String(args.click);
+      const clicked = await cdp.evaluate(`
+        (() => {
+          const buttons = [...document.querySelectorAll("button")];
+          const hit = buttons.find((b) => (b.textContent || "").trim() === ${JSON.stringify(target)});
+          if (!hit) return "not-found";
+          hit.click();
+          return "clicked";
+        })()
+      `);
+      console.log(`点击「${target}」：${clicked}`);
+    }
+
+    // 5c) 截图前跑一段页面内 JS（用来验证交互效果，比如点一下置灰项看提示）
+    if (args.eval) {
+      const result = await cdp.evaluate(String(args.eval));
+      console.log(`eval → ${JSON.stringify(result)}`);
     }
 
     // 6) 等实时画面/设备列表稳定下来

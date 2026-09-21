@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { USE_RELAY } from "./api/client";
 import { useAutomation, type AutomationDevice } from "./api/automation";
 import type { SessionUser } from "./api/session";
+import { LockedBlock, LockedField, LockedToast, useLockedNotice } from "./LockedFeature";
 import { VideoPanel } from "./VideoPanel";
 
 interface AutomationViewProps {
@@ -38,6 +39,17 @@ const DEFAULT_DAYIL: DayilForm = {
   followProbability: 5,
   commentProbability: 0
 };
+
+/**
+ * 置灰项里展示的默认值。
+ *
+ * 必须与 **agent 侧 `DAYIL_DEFAULTS`**（`agent/src/autojs/autojs-validation.ts`）
+ * 以及 autojs 表单的初始值（`scripts_pages/DayilWork.html`）保持一致 ——
+ * 否则界面显示 3，实际下发的是别的数，客户按界面理解就会对不上。
+ * 将来开放这些项时，这里直接换成可编辑的 state 即可。
+ */
+const DEFAULT_DAYIL_MIN_SWIPE = 3;
+const DEFAULT_DAYIL_MAX_SWIPE = 6;
 
 /**
  * 自动化面板。
@@ -134,6 +146,8 @@ function DayilPanel({
   const [resultOk, setResultOk] = useState<boolean | null>(null);
   const [status, setStatus] = useState<RunStatusEntry[]>([]);
   const [statusBusy, setStatusBusy] = useState(false);
+  // 试用版功能门：点置灰项 → 底部提示
+  const locked = useLockedNotice();
 
   const onlineDevices = useMemo(() => devices.filter((d) => d.status === "online"), [devices]);
 
@@ -310,13 +324,95 @@ function DayilPanel({
           />
         </div>
 
+        {/*
+          以下选项来自 autojs 桌面端的「执行养号配置」页面，试用版暂未开放。
+          全部照原样展示（含原来两列排布的项），让客户看得见完整能力；
+          点击任意一项弹出统一的升级提示。
+        */}
+        <h3 className="admin-section-title">更多养号参数（正式版）</h3>
+
+        <div className="locked-grid">
+          <LockedField label="最少滑动次数" name="养号 · 最少滑动次数" onLocked={locked.notify} hint="默认 3">
+            <input type="number" value={DEFAULT_DAYIL_MIN_SWIPE} disabled readOnly />
+          </LockedField>
+          <LockedField label="最多滑动次数" name="养号 · 最多滑动次数" onLocked={locked.notify} hint="默认 6">
+            <input type="number" value={DEFAULT_DAYIL_MAX_SWIPE} disabled readOnly />
+          </LockedField>
+          <LockedField label="收藏概率 %" name="养号 · 收藏概率" onLocked={locked.notify} hint="默认 25">
+            <input type="number" value={25} disabled readOnly />
+          </LockedField>
+          <LockedField label="搜索概率 %" name="养号 · 搜索概率" onLocked={locked.notify} hint="默认 50">
+            <input type="number" value={50} disabled readOnly />
+          </LockedField>
+          <LockedField
+            label="搜索后等待（毫秒）"
+            name="养号 · 搜索后等待"
+            onLocked={locked.notify}
+            hint="默认 7000"
+          >
+            <input type="number" value={7000} disabled readOnly />
+          </LockedField>
+          <LockedField label="看播时间（毫秒）" name="养号 · 看播时间" onLocked={locked.notify} hint="默认 15000">
+            <input type="number" value={15000} disabled readOnly />
+          </LockedField>
+          <LockedField
+            label="定时运行时间"
+            name="养号 · 定时运行"
+            onLocked={locked.notify}
+            hint="到点自动开跑，无需人工守着"
+          >
+            <input type="datetime-local" disabled readOnly />
+          </LockedField>
+        </div>
+
+        <LockedBlock
+          title="🤖 AI 方案生成"
+          name="养号 · AI 方案生成"
+          onLocked={locked.notify}
+          description="输入商品 / 行业 / 品类，自动生成评论内容、搜索关键词与直播互动话术，并填入下方输入框"
+        >
+          <div style={{ display: "flex", gap: 8 }}>
+            <input type="text" placeholder="例如：budget wigs、false nails…" disabled readOnly style={{ flex: 1 }} />
+            <button type="button" className="top-bar-action neutral" disabled>
+              生成方案
+            </button>
+          </div>
+        </LockedBlock>
+
+        <div className="locked-grid" style={{ marginTop: 14 }}>
+          <LockedField
+            label="直播互动内容（每行一个）"
+            name="养号 · 直播互动内容"
+            onLocked={locked.notify}
+            hint="进入直播间时随机发送"
+          >
+            <textarea rows={4} value={"hello\nnice live\ngreat show"} disabled readOnly className="video-textarea" />
+          </LockedField>
+          <LockedField
+            label="评论内容（每行一个）"
+            name="养号 · 评论内容"
+            onLocked={locked.notify}
+            hint="命中评论概率时随机取一条"
+          >
+            <textarea rows={4} value={"cool\nawesome\nwow\nnice"} disabled readOnly className="video-textarea" />
+          </LockedField>
+          <LockedField
+            label="搜索关键词（每行一个）"
+            name="养号 · 搜索关键词"
+            onLocked={locked.notify}
+            hint="命中搜索概率时随机取一条"
+          >
+            <textarea rows={4} value={"technology\nmusic\ntravel"} disabled readOnly className="video-textarea" />
+          </LockedField>
+        </div>
+
         {!user.capabilities.can_run_dayil ? (
           <div className="admin-hint warn" style={{ marginTop: 16 }}>
             当前账号没有「下发养号任务」权限，请联系管理员开启。
           </div>
         ) : null}
 
-        <div style={{ marginTop: 18, display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ marginTop: 18, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <button
             type="button"
             className="auth-submit"
@@ -328,6 +424,15 @@ function DayilPanel({
           </button>
           <button type="button" className="top-bar-action neutral" disabled={statusBusy} onClick={() => void loadStatus()}>
             {statusBusy ? "刷新中…" : "刷新运行状态"}
+          </button>
+          {/* autojs 桌面端把「生成」和「立即运行」拆成两步；试用版只提供合并的下发 */}
+          <button
+            type="button"
+            className="top-bar-action neutral"
+            style={{ opacity: 0.5, cursor: "not-allowed" }}
+            onClick={() => locked.notify("养号 · 只生成不下发")}
+          >
+            仅生成脚本 🔒
           </button>
         </div>
 
@@ -352,6 +457,8 @@ function DayilPanel({
           )}
         </div>
       </article>
+
+      <LockedToast state={locked} />
     </section>
   );
 }

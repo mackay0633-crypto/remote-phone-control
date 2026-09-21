@@ -1176,7 +1176,6 @@ select {
 }
 
 /* 设备列表与表格 */
-
 .admin-device-list {
   display: grid;
   gap: 8px;
@@ -1436,4 +1435,133 @@ select {
   .video-assign-row select {
     flex: 1 1 100%;
   }
+}
+
+/* ────────────────────── 试用版功能门（置灰项）──────────────────────
+ *
+ * 目标：把 autojs 桌面端的全部可调项都展示出来，但试用版只开放一部分。
+ * 置灰项必须**能收到点击**才能弹升级提示 —— 而浏览器不给 disabled 表单元素
+ * 派发鼠标事件，所以关键在这些规则：
+ *   - 控件 pointer-events: none  → 点击穿透到外层容器
+ *   - 外层容器挂 onClick         → 稳定拿到点击
+ * 只写 disabled 的话，点了会毫无反应（第一版就是这么错的）。
+ */
+
+.locked-field {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.locked-field input,
+.locked-field select,
+.locked-field textarea {
+  pointer-events: none;
+}
+
+.locked-field:hover,
+.locked-block:hover {
+  opacity: 0.62;
+}
+
+.locked-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 196, 92, 0.32);
+  background: rgba(255, 196, 92, 0.12);
+  color: #ffcf72;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+/* 整块被锁的功能（如 AI 方案生成），带一个虚线框以示区别 */
+.locked-block {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px dashed rgba(167, 201, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(6, 11, 22, 0.4);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.locked-block-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: rgba(167, 201, 255, 0.7);
+}
+
+.locked-block-title {
+  font-weight: 600;
+}
+
+.locked-block input,
+.locked-block textarea,
+.locked-block button {
+  pointer-events: none;
+}
+
+/* 升级提示：固定底部，因为被锁的项可能已经滚出视口 */
+.locked-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(90vw, 520px);
+  padding: 12px 18px;
+  border: 1px solid rgba(255, 196, 92, 0.34);
+  border-radius: 14px;
+  background: rgba(28, 22, 8, 0.94);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  color: #ffe6b0;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+  animation: locked-toast-in 160ms ease-out;
+}
+
+.locked-toast-icon {
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.locked-toast-target {
+  display: block;
+  color: rgba(255, 230, 176, 0.72);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.locked-toast-message {
+  display: block;
+  font-weight: 600;
+  color: #ffd987;
+}
+
+@keyframes locked-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* 一批置灰项：和可用的项排在一起，但整组降饱和 */
+.locked-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
 }

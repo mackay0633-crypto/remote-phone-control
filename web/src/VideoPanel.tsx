@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AutomationDevice, AutomationResult } from "./api/automation";
 import type { SessionUser } from "./api/session";
+import { LockedBlock, LockedField, LockedToast, useLockedNotice } from "./LockedFeature";
 import {
   deleteVideo,
   fetchVideos,
@@ -75,6 +76,8 @@ export function VideoPanel({ user, devices, request }: VideoPanelProps) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState("");
   const [resultOk, setResultOk] = useState<boolean | null>(null);
+  // 试用版功能门：点置灰项 → 底部提示
+  const locked = useLockedNotice();
 
   const onlineDevices = useMemo(() => devices.filter((d) => d.status === "online"), [devices]);
 
@@ -332,7 +335,16 @@ export function VideoPanel({ user, devices, request }: VideoPanelProps) {
             <div className="panel-kicker">素材库</div>
             <h2>已上传 {videos.length} 个</h2>
           </div>
-          <div className="panel-note">
+          <div className="panel-note" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {/* autojs 桌面端的「打开素材导入」——试用版只支持网页上传单个文件 */}
+            <button
+              type="button"
+              className="top-bar-action neutral"
+              style={{ opacity: 0.5, cursor: "not-allowed" }}
+              onClick={() => locked.notify("发视频 · 从设备批量导入素材")}
+            >
+              素材导入 🔒
+            </button>
             <button
               type="button"
               className="top-bar-action neutral"
@@ -412,6 +424,28 @@ export function VideoPanel({ user, devices, request }: VideoPanelProps) {
           仅支持 mp4 / mov / m4v；文件名会自动规范化（中文保留）。
           同一批任务里不能有两个同名视频。
         </div>
+
+        {/* autojs 素材库的两个筛选/清理能力，试用版暂未开放 */}
+        <div className="locked-grid" style={{ marginTop: 14 }}>
+          <LockedField
+            label="筛选视频"
+            name="发视频 · 筛选视频"
+            onLocked={locked.notify}
+            hint="按文件名或来源目录搜索"
+          >
+            <input type="text" placeholder="按文件名或来源目录搜索" disabled readOnly />
+          </LockedField>
+          <LockedBlock
+            title="删除已发布"
+            name="发视频 · 删除手机上已发布的视频"
+            onLocked={locked.notify}
+            description="批量清理手机上已经发布出去的视频文件，释放设备存储"
+          >
+            <button type="button" className="top-bar-action neutral" disabled>
+              删除已发布
+            </button>
+          </LockedBlock>
+        </div>
       </article>
 
       {/* ── 发布设置 ── */}
@@ -489,6 +523,18 @@ export function VideoPanel({ user, devices, request }: VideoPanelProps) {
             读不到任何账号。请确认设备主机已连接，且设备上已登录 TikTok 账号。
           </div>
         ) : null}
+
+        {/* autojs 账号列表上方的筛选框，试用版未开放 */}
+        <div className="locked-grid" style={{ marginTop: 12 }}>
+          <LockedField
+            label="筛选账号"
+            name="发视频 · 筛选账号"
+            onLocked={locked.notify}
+            hint="按账号名、设备或目录搜索"
+          >
+            <input type="text" placeholder="按账号名、设备或目录搜索" disabled readOnly />
+          </LockedField>
+        </div>
 
         {mode === "precise" ? (
           <label className="video-field">
@@ -572,6 +618,21 @@ export function VideoPanel({ user, devices, request }: VideoPanelProps) {
           </>
         )}
 
+        {/* autojs 桌面端在同位置提供 AI 方案生成：按品类自动写标题/商品名/地点 */}
+        <LockedBlock
+          title="🤖 AI 方案生成"
+          name="发视频 · AI 方案生成"
+          onLocked={locked.notify}
+          description="输入商品 / 行业 / 品类，自动生成标题、商品名与地点，并填入下方输入框"
+        >
+          <div style={{ display: "flex", gap: 8 }}>
+            <input type="text" placeholder="例如：budget wigs、false nails…" disabled readOnly style={{ flex: 1 }} />
+            <button type="button" className="top-bar-action neutral" disabled>
+              生成方案
+            </button>
+          </div>
+        </LockedBlock>
+
         <h3 className="admin-section-title">可选参数</h3>
         <div className="admin-quota">
           <label className="admin-quota-field">
@@ -650,6 +711,8 @@ export function VideoPanel({ user, devices, request }: VideoPanelProps) {
           </div>
         ) : null}
       </article>
+
+      <LockedToast state={locked} />
     </section>
   );
 }
