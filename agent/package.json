@@ -6,6 +6,7 @@
   "scripts": {
     "devices": "tsx src/main.ts",
     "dev": "tsx watch src/main.ts --serve",
+    "serve": "tsx src/main.ts --serve",
     "test:video-download": "node dev/video-download-test.mjs",
     "test:send-video": "tsx dev/send-video-dispatch-test.mjs",
     "test:dayil": "node dev/dayil-config-test.mjs",

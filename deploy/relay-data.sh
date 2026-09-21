@@ -43,8 +43,45 @@ usage() {
 用法：
   bash deploy/relay-data.sh export [输出目录]
   bash deploy/relay-data.sh import <tar.gz 路径>
+  bash deploy/relay-data.sh clean [--yes]     # 清理孤儿素材目录（默认只报告不删）
+
+clean 做什么：
+  扫 RELAY_MEDIA_DIR 下的目录，凡是 videos 表里查不到的，就是孤儿。
+  孤儿来自两类历史操作，脚本都无权自动判断，所以默认只列出来：
+    - 删客户账号（记录被 ON DELETE CASCADE 清掉，磁盘文件留在原地）
+    - 手工删过 videos 行 / 换过 RELAY_MEDIA_DIR / 直接从旧机器拷过目录
+  加 --yes 才真删。
 EOF
   exit 1
+}
+
+# 列出库中所有 video id（一行一个）。表不存在时用退出码 2 明确区分 ——
+# 绝不能让「查不到表」退化成「所有目录都是孤儿」，那是灾难性的。
+list_video_ids_with_node() {
+  local helper="$REPO_DIR/relay/.relay-data-ids-$$.cjs"
+
+  cat > "$helper" <<'JS'
+const Database = require("better-sqlite3");
+const db = new Database(process.argv[2], { readonly: true });
+const has = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='videos'").get();
+if (!has) {
+  db.close();
+  console.error("NO_VIDEOS_TABLE");
+  process.exit(2);
+}
+const rows = db.prepare("SELECT id FROM videos").all();
+db.close();
+process.stdout.write(rows.map((r) => r.id).join("\n"));
+JS
+
+  local out="" rc=0
+  out="$( cd "$REPO_DIR/relay" && node "$helper" "$DB_PATH" )" || rc=$?
+  rm -f "$helper"
+
+  if [ "$rc" -ne 0 ]; then
+    return "$rc"
+  fi
+  printf '%s' "$out"
 }
 
 # 用 SQLite 的在线备份接口把源库（含 WAL 中的最新事务）合并成一个自包含文件。
@@ -284,8 +321,155 @@ do_import() {
 EOF
 }
 
+# ────────────────────────── clean ──────────────────────────
+#
+# 清理「磁盘上有目录、库里没有记录」的孤儿素材。
+#
+# 这类孤儿主要来自删客户账号：videos.user_id 是 ON DELETE CASCADE，
+# 删 users 会把记录一起清掉，但数据库不会连带删磁盘文件。
+# （新代码已经在删账号时顺手删文件了，这里清理的是**历史遗留**。）
+#
+# 安全设计：
+#   - 默认**只报告不删**，必须显式 --yes
+#   - 查不到 videos 表时直接中止，绝不把「查询失败」当成「全是孤儿」
+#   - 删除前把总数与总占用打出来，给一次反悔机会
+do_clean() {
+  local apply=0
+  if [ "${1:-}" = "--yes" ]; then
+    apply=1
+  elif [ -n "${1:-}" ]; then
+    echo "未知参数：$1（只支持 --yes）" >&2
+    exit 1
+  fi
+
+  if [ ! -f "$DB_PATH" ]; then
+    echo "找不到数据库：$DB_PATH" >&2
+    exit 1
+  fi
+
+  if [ ! -d "$MEDIA_PATH" ]; then
+    echo "素材目录不存在，没什么可清的：$MEDIA_PATH"
+    exit 0
+  fi
+
+  echo "==> 清理孤儿素材"
+  echo "    数据库：$DB_PATH"
+  echo "    素材目录：$MEDIA_PATH"
+  echo
+
+  local id_list rc=0
+  id_list="$(list_video_ids_with_node)" || rc=$?
+
+  if [ "$rc" -eq 2 ]; then
+    echo "中止：这个库里没有 videos 表。" >&2
+    echo "  通常意味着还没跑过 v4 迁移（relay 没启动过新版）。" >&2
+    echo "  此时**无法**判断哪些目录是孤儿，拒绝继续。" >&2
+    exit 1
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    echo "中止：读取 videos 表失败（退出码 $rc）。" >&2
+    echo "  无法确定孤儿集合时绝不做删除。" >&2
+    exit 1
+  fi
+
+  local known_count
+  known_count="$(printf '%s\n' "$id_list" | grep -c . || true)"
+  echo "    库中素材记录：$known_count 条"
+
+  # 用排序文件做集合比对，避免在 shell 里写 O(n²) 的循环
+  local known_file orphan_file
+  known_file="$(mktemp)"
+  orphan_file="$(mktemp)"
+  printf '%s\n' "$id_list" | grep . | sort > "$known_file"
+
+  local dir name size
+  local orphan_count=0
+  local missing_rows=0
+
+  while IFS= read -r dir; do
+    name="$(basename "$dir")"
+
+    # 跳过导入时留下的 .bak-<时间戳> 留档目录
+    case "$name" in
+      *.bak-*) continue ;;
+    esac
+
+    if grep -qxF "$name" "$known_file"; then
+      continue
+    fi
+
+    orphan_count=$((orphan_count + 1))
+    printf '%s\n' "$dir" >> "$orphan_file"
+  done < <(find "$MEDIA_PATH" -mindepth 1 -maxdepth 1 -type d | sort)
+
+  # 反向检查：库里有记录、磁盘上没有目录 —— 客户端会看到「视频文件已丢失」
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if [ ! -d "$MEDIA_PATH/$name" ]; then
+      missing_rows=$((missing_rows + 1))
+    fi
+  done < "$known_file"
+
+  echo "    孤儿目录：$orphan_count 个"
+  echo
+
+  if [ "$orphan_count" -gt 0 ]; then
+    local total
+    # 用 NUL 分隔传给 xargs：素材根目录若含空格，$(cat file) 会被词分割切坏
+    total="$(tr '\n' '\0' < "$orphan_file" | xargs -0 du -shc 2>/dev/null | tail -1 | cut -f1 || echo "?")"
+    echo "    可释放约 ${total:-?}"
+    echo "    前 20 个："
+    head -20 "$orphan_file" | while IFS= read -r d; do
+      printf '      %s  (%s)\n' "$(basename "$d")" "$(du -sh "$d" 2>/dev/null | cut -f1)"
+    done
+    if [ "$orphan_count" -gt 20 ]; then
+      echo "      …（其余 $((orphan_count - 20)) 个略）"
+    fi
+    echo
+  fi
+
+  if [ "$missing_rows" -gt 0 ]; then
+    echo "    ⚠️ 另有 $missing_rows 条记录在库里、磁盘上却找不到目录。"
+    echo "       这些素材在素材库里点操作会报「视频文件已丢失，请重新上传」，"
+    echo "       而且仍占着客户的存储配额。本脚本不动记录，请在界面里删掉它们。"
+    echo
+  fi
+
+  if [ "$orphan_count" -eq 0 ]; then
+    echo "    ✓ 没有孤儿目录，不需要清理。"
+    rm -f "$known_file" "$orphan_file"
+    exit 0
+  fi
+
+  if [ "$apply" -ne 1 ]; then
+    echo "  （这是预演。确认无误后加 --yes 真删）"
+    echo "    bash deploy/relay-data.sh clean --yes"
+    rm -f "$known_file" "$orphan_file"
+    exit 0
+  fi
+
+  echo "==> 执行删除"
+  local removed=0 failed=0
+  while IFS= read -r dir; do
+    if rm -rf "$dir"; then
+      removed=$((removed + 1))
+    else
+      failed=$((failed + 1))
+      echo "    删除失败：$dir" >&2
+    fi
+  done < "$orphan_file"
+
+  rm -f "$known_file" "$orphan_file"
+  echo "    已删除 $removed 个目录$([ "$failed" -gt 0 ] && echo "，失败 $failed 个")"
+  echo
+  echo "==> 完成。剩余占用："
+  du -sh "$MEDIA_PATH" 2>/dev/null || true
+}
+
 case "${1:-}" in
   export) shift; do_export "${1:-}" ;;
   import) shift; do_import "${1:-}" ;;
+  clean) shift; do_clean "${1:-}" ;;
   *) usage ;;
 esac

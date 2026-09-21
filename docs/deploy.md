@@ -389,8 +389,39 @@ echo $env:RELAY_SERVER_WS_URL
 ```powershell
 cd D:\projects\remote-phone-control
 git pull
+
+# 7×24 接手机的主机：后台跑，日志写文件（推荐）
+.\scripts\start-agent.ps1 -Background
+
+# 想盯着日志看就用前台（Ctrl+C 停止）
 .\scripts\start-agent.ps1
 ```
+
+> ⚠️ **别用 `npm run agent:server` / `agent:watch`** —— 那是 `tsx watch`，开发用的。
+> 在一台 7×24 的主机上它有三个坑，三个都真实发生过：
+>
+> 1. **静默重启**：监视 src 目录，`git pull` 或编辑器保存都会重启 agent，
+>    正在跑的养号/发视频任务被拦腰打断，relay 那边一直等
+> 2. **继承过期环境变量**：子进程继承的是 `tsx watch` 父进程**创建那一刻**的环境，
+>    之后再 `setx` 改密钥，重启出来的子进程仍用旧值 → 症状是「密钥明明改了，
+>    发视频还是 401」
+> 3. 前台窗口被误点进「选择模式」会把整个进程**挂起**（CPU 归零、端口不响应）
+>
+> `-Background` 同时解决 2 和 3（输出写文件，不经过控制台）。
+> 部署到主机上一律用 `agent:serve`。
+
+**后台模式的日常操作**：
+
+```powershell
+# 看日志（-Wait 相当于 tail -f）
+Get-Content .\logs\agent.log -Tail 40 -Wait
+
+# 停止
+.\scripts\stop-agent.ps1
+```
+
+> `stop-agent.ps1` 从**监听端口反查属主**再结束整条进程链，所以不会误杀
+> 这台机器上其它 node 进程（编辑器、调试服务等）。已经测过。
 
 启动脚本会**逐项检查并打印就绪状态**，缺什么就直接告诉你该设哪一条：
 
@@ -635,6 +666,36 @@ bash deploy/relay-data.sh import ~/relay-data-20260916-120000.tar.gz
 它比手工 `sqlite3 .backup` 多做两件必要的事：用在线备份接口生成**自包含**的库
 （不停 relay），并数一遍表，读不出表就直接失败；导入前先 `pm2 stop`，
 把现有数据改名留档。
+
+**清理孤儿素材**（磁盘上有目录、库里没记录）：
+
+```bash
+bash deploy/relay-data.sh clean          # 预演，只报告
+bash deploy/relay-data.sh clean --yes    # 确认后真删
+```
+
+孤儿主要来自「删客户账号」的**历史遗留** —— `videos.user_id` 是
+`ON DELETE CASCADE`，删 users 会把记录清干净，但数据库不会连带删磁盘文件。
+（新代码已经在删账号时顺手删文件，这个命令清的是以前留下的。）
+
+查不到 `videos` 表时脚本会**中止**，绝不会把「查询失败」当成「全是孤儿」。
+
+**清理设备主机上累积的视频副本**（在主机上执行）：
+
+```powershell
+# 预演，只报告
+.\scripts\clean-agent-media.ps1
+
+# 删掉超过 30 天的
+.\scripts\clean-agent-media.ps1 -Apply
+```
+
+正常情况下 `<MEDIA_DIR>` 是空的 —— 下发成功后会自动删掉本机副本
+（因为 `downloadVideo` 每次都重新下载，本地留着没有复用价值）。
+这个脚本清的是**历史遗留**和**失败时故意保留**的那些。
+
+它只处理**目录名是 32 位小写十六进制**（videoId 格式）的子目录，
+所以即使 `MEDIA_DIR` 被误设成 `D:\`，也不会误删无关目录。
 
 > ⚠️ **别用 `cp relay.db` 备份。** relay 跑在 WAL 模式，最新事务都还在
 > `.db-wal` 里，`.db` 本身可能只有 4KB 的文件头。裸拷 + 只还原 `.db` 会得到

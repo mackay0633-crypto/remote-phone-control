@@ -33,6 +33,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -265,7 +266,10 @@ async function main() {
   const expectedPath = join(mediaDir, VIDEO_ID, SAFE_NAME);
 
   chk("video_paths 被换成本机真实路径", body.video_paths, [expectedPath]);
-  chk("下载的文件确实存在", (await stat(expectedPath)).isFile(), true);
+  // 派发成功后会删掉本机副本（见 relay-client 的 removeLocalCopies）：
+  // downloadVideo 每次都重新下载，本地留着没有任何复用价值，只会撑爆 MEDIA_DIR。
+  // 所以这里断言的是「已经被清掉」，而不是「文件还在」。
+  chk("派发成功后本机副本已清理", existsSync(join(mediaDir, VIDEO_ID)), false);
   chk("下载请求带上了密钥", video.seen[0]?.authorization, `Bearer ${AGENT_SECRET}`);
   chk("video_ids 没有透传给 autojs", "video_ids" in body, false);
   chk("send_time 透传", body.send_time, "2026-01-02 03:04");
@@ -289,6 +293,8 @@ async function main() {
 
   chk("越权账号被拒", stolen.ok, false);
   chk("提示无权操作账号", /无权操作以下账号/.test(stolen.error ?? ""), true);
+  // 失败路径**保留**副本，便于对着文件排查（反正下次也会重新下载）
+  chk("失败时本机副本被保留（便于排查）", existsSync(join(mediaDir, VIDEO_ID)), true);
   chk("被拒的请求**没有**发给 autojs", autojs.received.length, postsBefore);
 
   console.log("--- 3. 无归属设备的账号不被误伤 ---");

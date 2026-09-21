@@ -7,11 +7,26 @@
 #    用 VS Code 保存时选 "UTF-8 with BOM"。
 #
 # 用法：
-#   .\scripts\start-agent.ps1
+#   .\scripts\start-agent.ps1                 # 前台运行，日志直接打在窗口里
+#   .\scripts\start-agent.ps1 -Background     # 后台运行，日志写 logs\agent.log（推荐 7×24）
 #
 # 覆盖默认值：
 #   .\scripts\start-agent.ps1 -RelayUrl "ws://1.2.3.4:5081/ws/agent" -AgentId "pc-02"
 #   .\scripts\start-agent.ps1 -Secret "<与服务器 relay 相同的 AGENT_SECRET>"
+#
+# ── 为什么用 `npm run agent:serve` 而不是 `agent:server` ──────────
+#
+# 后者是 `tsx watch`，那是**开发**用的。在一台 7×24 接手机的主机上用它有三个坑，
+# 三个都真实发生过：
+#   1. **静默重启**：监视 src 目录，任何文件变化（包括 git pull、编辑器保存）
+#      都会重启 agent —— 正在跑的养号/发视频任务被拦腰打断，relay 那边一直等。
+#   2. **继承过期环境变量**：watch 的父进程是某个窗口里启动的，子进程继承的是
+#      **那一刻**的环境。之后再 setx 改密钥，重启出来的子进程仍然用旧值 ——
+#      症状是「密钥明明改了，发视频还是 401」。
+#   3. 控制台被误点进「选择模式」会把整个进程挂起（CPU 归零、端口不响应）。
+#      `-Background` 把输出写进文件就彻底没有这个问题。
+#
+# `dev`（watch）保留给开发用；部署到主机上一律用 `serve`。
 #
 # 设计说明：脚本**不写死 adb / scrcpy 的本机路径**，只负责检查环境变量是否就位，
 # 缺了就打印出该设什么。这样同一份脚本在任何机器上都能用，
@@ -23,7 +38,9 @@ param(
     [string]$AgentId = "",
     [string]$DeviceRange = "",
     [string]$Secret = "",
-    [string]$MediaDir = ""
+    [string]$MediaDir = "",
+    # 后台运行：隐藏窗口、输出追加到 logs\agent.log，不会被控制台选择模式挂起
+    [switch]$Background
 )
 
 $ErrorActionPreference = "Stop"
@@ -188,9 +205,63 @@ Write-Host "启动中……" -ForegroundColor Cyan
 Write-Host ""
 
 # ── 4. 启动 ────────────────────────────────────────────────────
+# 用 serve（无 watch），不用 dev（tsx watch）—— 理由见文件头。
+
+function Test-PortInUse {
+    param([int]$Port)
+    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    return [bool]$conn
+}
+
+if ($Background) {
+    $logDir = Join-Path $repoRoot "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $logFile = Join-Path $logDir "agent.log"
+
+    # 已经有一个在跑就别再起第二个：两个 agent 抢同一个 AGENT_ID 会让 relay
+    # 反复收到 register-agent（旧连接被踢），设备列表看起来忽有忽无
+    $port = [int](Get-ArgOrEnv "" "AGENT_PORT" "5071")
+    if (Test-PortInUse $port) {
+        Write-Host "  [已在运行] 端口 $port 上已有进程在监听，不再启动第二个。" -ForegroundColor Yellow
+        Write-Host "             要看日志： Get-Content '$logFile' -Tail 40 -Wait" -ForegroundColor Yellow
+        Write-Host "             要停掉：   .\scripts\stop-agent.ps1" -ForegroundColor Yellow
+        exit 0
+    }
+
+    # 日志轮转：超过 10MB 就留一份上一轮，避免无限增长
+    if ((Test-Path $logFile) -and ((Get-Item $logFile).Length -gt 10MB)) {
+        Move-Item -Force $logFile "$logFile.1"
+        Write-Host "  [日志] 上一轮已轮转为 agent.log.1" -ForegroundColor DarkGray
+    }
+
+    Write-Host "  [后台] 窗口隐藏，输出追加到 $logFile" -ForegroundColor Green
+    Write-Host "  [提示] 不会被控制台选择模式挂起，关掉本窗口也不影响它。" -ForegroundColor DarkGray
+    Write-Host ""
+
+    # 用 cmd 的重定向（追加），这样跨多次重启日志是连续的
+    $cmd = "npm run agent:serve >> `"$logFile`" 2>&1"
+    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd `
+        -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru
+
+    Start-Sleep -Seconds 6
+    $running = Test-PortInUse $port
+    if ($running) {
+        Write-Host "  [就绪] agent 已在后台运行（cmd pid=$($proc.Id)）" -ForegroundColor Green
+        Write-Host "         看日志： Get-Content '$logFile' -Tail 40 -Wait" -ForegroundColor Cyan
+    } else {
+        Write-Host "  [失败] 6 秒内没起来，最后的日志：" -ForegroundColor Red
+        if (Test-Path $logFile) { Get-Content $logFile -Tail 25 }
+    }
+    return
+}
+
+Write-Host "  [前台] 日志直接打在本窗口（Ctrl+C 停止）" -ForegroundColor DarkGray
+Write-Host "         7×24 无人值守请改用 -Background —— 前台窗口被点进「选择模式」会把进程挂起。" -ForegroundColor DarkGray
+Write-Host ""
+
 Push-Location $repoRoot
 try {
-    npm run agent:server
+    npm run agent:serve
 } finally {
     Pop-Location
 }

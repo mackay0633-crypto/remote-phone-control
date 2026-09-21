@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import { AutojsClient, AutojsError } from "../autojs/autojs-client.js";
-import { downloadVideo, type VideoDownloadConfig } from "../autojs/video-download.js";
+import { downloadVideo, removeDownloadedVideo, type VideoDownloadConfig } from "../autojs/video-download.js";
 import type { DeviceInfo } from "../device/device-types.js";
 import { DeviceTracker } from "../device/device-tracker.js";
 import { InputManager, type DeviceInputCommand } from "../input/input-manager.js";
@@ -310,11 +310,37 @@ export class RelayClient {
 
     const allowedAccounts = await this.resolveAllowedAccounts(client, allowedDeviceIds);
 
-    return client.startSendVideo(
+    const result = await client.startSendVideo(
       payload as unknown as Parameters<AutojsClient["startSendVideo"]>[0],
       allowedDeviceIds,
       allowedAccounts
     );
+
+    // 派发成功后删掉本机副本。
+    //
+    // 为什么不留着当缓存：`downloadVideo` 每次都会重新下载并覆盖，**没有**
+    // 「文件已存在就跳过」的判断，所以本地这份没有任何复用价值 —— 留着只会让
+    // MEDIA_DIR 按 videoId 无限增长（一台主机上会堆着所有客户发过的素材）。
+    //
+    // 失败时**保留**：那种情况需要对着文件排查，而且反正下次也会重新下载。
+    // 历史遗留的副本用 scripts\clean-agent-media.ps1 按时间/容量清。
+    await this.removeLocalCopies(download, videoIds);
+
+    return result;
+  }
+
+  /** 清理本机视频副本；失败只记日志，不影响「任务已经下发成功」这个事实 */
+  private async removeLocalCopies(config: VideoDownloadConfig, videoIds: string[]): Promise<void> {
+    for (const videoId of videoIds) {
+      try {
+        await removeDownloadedVideo(config, videoId);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(`[agent] 清理本机视频副本失败（${videoId}）: ${detail}`);
+      }
+    }
+
+    console.log(`[agent] 已清理本机视频副本 ${videoIds.length} 个`);
   }
 
   /**
