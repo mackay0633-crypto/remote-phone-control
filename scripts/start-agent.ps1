@@ -32,12 +32,31 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 function Get-EffectiveEnv {
     param([string]$Name)
 
-    # 当前进程优先，其次读用户级持久变量
-    $value = [Environment]::GetEnvironmentVariable($Name, "Process")
-    if (-not $value) {
-        $value = [Environment]::GetEnvironmentVariable($Name, "User")
+    $processValue = [Environment]::GetEnvironmentVariable($Name, "Process")
+    $userValue = [Environment]::GetEnvironmentVariable($Name, "User")
+
+    # 两处都有且不一致：**持久值优先**，并把冲突喊出来。
+    #
+    # 为什么不是"本进程优先"（这是原来的写法，踩过）：
+    # Windows 的进程环境是**创建时**从父进程继承的，之后 setx 改的是注册表，
+    # 不会影响任何已存在的窗口。于是在一个几天前就开着的 PowerShell 里运行
+    # 本脚本，拿到的仍是那时的旧值 —— 用户明明 setx 过、脚本却报旧值。
+    # 而 AGENT_SECRET 不一致**只在发视频时以 401 暴露**，排查成本极高。
+    #
+    # 仍然保留"只在本窗口设过、没持久化"的用法：那种情况下面走 userValue 为空
+    # 的分支，直接用进程值。要显式临时覆盖，用脚本参数（-Secret / -RelayUrl 等）。
+    if ($processValue -and $userValue -and $processValue -ne $userValue) {
+        Write-Host "  [注意] $Name 本窗口的值与持久值不一致" -ForegroundColor Yellow
+        if ($Name -like "*SECRET*") {
+            # 密钥绝不打印值，只报长度 —— 长度不同就足以定位问题
+            Write-Host "         本窗口 $($processValue.Length) 位  /  持久值 $($userValue.Length) 位" -ForegroundColor Yellow
+        }
+        Write-Host "         本次使用持久值；要临时覆盖请用脚本参数" -ForegroundColor Yellow
+        return $userValue
     }
-    return $value
+
+    if ($userValue) { return $userValue }
+    return $processValue
 }
 
 function Get-ArgOrEnv {
@@ -135,6 +154,18 @@ if ($effectiveSecret) {
     Set-Item -Path "env:AGENT_SECRET" -Value $effectiveSecret
     # 只报长度，不把密钥本身打到屏幕上/日志里
     Write-Host "  [就绪] AGENT_SECRET（已设置，$($effectiveSecret.Length) 位）" -ForegroundColor Green
+
+    # 长度不是 64 位十六进制时给个提示。
+    # openssl rand -hex 32 就是 64 位 hex；不是这个长度通常意味着当时粘少了字符，
+    # 而两边不一致**只在发视频时以 401 暴露**（注册、看画面、操控全都正常），
+    # 所以在这里提前说一句，比事后排查便宜得多。
+    if ($effectiveSecret -notmatch '^[0-9a-fA-F]{64}$') {
+        Write-Host "         ⚠️ 不是 64 位十六进制（openssl rand -hex 32 应产出 64 位）" -ForegroundColor Yellow
+        Write-Host "            若发视频报「agent 凭证无效」，就是两端不一致。核对：" -ForegroundColor Yellow
+        Write-Host '              curl.exe -s -w "`n%{http_code}`n" -H "Authorization: Bearer $env:AGENT_SECRET" `' -ForegroundColor Yellow
+        Write-Host '                "http://<服务器>/api/agent/videos/00000000000000000000000000000000"' -ForegroundColor Yellow
+        Write-Host "            404=一致（视频不存在）；401=不一致" -ForegroundColor Yellow
+    }
 } else {
     Write-Host "  [缺失] AGENT_SECRET —— 发视频会失败（下载视频时报 401/503）" -ForegroundColor Yellow
     Write-Host '         设一次即可（持久生效）：' -ForegroundColor Yellow
