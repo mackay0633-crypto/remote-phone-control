@@ -294,14 +294,16 @@ async function main() {
       console.log(`点击「${target}」：${await cdp.evaluate(clickByText(target))}`);
     }
 
-    // 5c) 截图前跑一段页面内 JS（用来验证交互效果，比如点一下置灰项看提示）
+    // 6) 等实时画面/设备列表稳定下来。
+    //    **必须在 --eval 之前等**：页面刚加载时设备列表还没到，
+    //    `.device-video-shell` 这类元素还不存在，eval 会拿到 null 报 Uncaught。
+    await sleep(SETTLE_MS);
+
+    // 6b) 截图前跑一段页面内 JS（验证交互，或量取计算样式）
     if (args.eval) {
       const result = await cdp.evaluate(String(args.eval));
       console.log(`eval → ${JSON.stringify(result)}`);
     }
-
-    // 6) 等实时画面/设备列表稳定下来
-    await sleep(SETTLE_MS);
 
     const shot = await cdp.send("Page.captureScreenshot", {
       format: "png",

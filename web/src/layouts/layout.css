@@ -41,8 +41,9 @@
 
 .md-shell {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 270px;
-  gap: 18px;
+  /* 两侧各收窄一点，把宽度让给中栏的画面 */
+  grid-template-columns: 268px minmax(0, 1fr) 244px;
+  gap: 16px;
   align-items: start;
 }
 
@@ -80,6 +81,48 @@
 
 .md-stage {
   padding: 18px;
+}
+
+/*
+ * 画面外框在中栏里居中并限宽。
+ * 不限宽的话外框会拉满 700px，而手机只有 450 左右，两边各留一大条空框。
+ */
+.screen-frame-md {
+  max-width: 620px;
+  margin-inline: auto;
+}
+
+/*
+ * 主从三栏的纵向"零碎"收一收。
+ *
+ * 画面高度是按视口算的（`--screen-max`），所以这些固定开销每省一点，
+ * 画面就能大一点。实测这套布局除画面外的固定高度约 334px：
+ * 页面上下留白 + 中栏内边距 + 标题行 + 控制条。收掉 40 多之后，
+ * 画面能到 ~425×850 且**控制按钮留在一屏内**（不用滚动就能点 Home/Back）。
+ */
+:root[data-layout="master-detail"] .app-shell {
+  padding: 26px;
+}
+
+.md-stage {
+  padding: 14px;
+}
+
+.md-stage .md-stage-head {
+  margin-bottom: 8px;
+}
+
+.md-stage .md-stage-title {
+  font-size: 20px;
+  margin: 4px 0 1px;
+}
+
+.md-stage .control-toolbar {
+  margin-top: 12px;
+}
+
+.md-stage .screen-content {
+  padding: 10px;
 }
 
 .md-stage-head {
@@ -559,35 +602,53 @@
   padding: 0;
 }
 
-/* 高度受限时宽度自动跟随，避免画面被压扁 */
+/*
+ * 画面尺寸：高度必须是**明确值**，宽度才会按宽高比推导。
+ *
+ * 这里踩了两个坑，都是靠实测（`--eval` 打印计算值）才看穿的：
+ *
+ * 1. 只写 `max-height` 完全无效 —— `width: auto` 时宽度由 `<video>` 的**固有宽度**
+ *    决定（Chrome 在无媒体数据时是 300px），高度再按 aspect-ratio 推成 600。
+ *    于是 `max-height: 900px` 形同虚设，画面永远 300×600。
+ * 2. 更糟的是它会**把画面拉扁**：max-height 压的是高度，宽度不动 ——
+ *    设备墙那版的手机就成了扁的。给明确 height 之后宽高比才真正被遵守。
+ */
 :root:not([data-layout="classic"]) .device-video-shell {
   width: auto;
-  height: auto;
-  aspect-ratio: 300 / 600;
-  max-height: var(--screen-max, 58vh);
+  height: var(--screen-max);
+  max-height: none;
   max-width: 100%;
+  aspect-ratio: 300 / 600;
 }
 
 :root:not([data-layout="classic"]) .screen-content {
   padding: 14px 12px;
 }
 
-/* 每种布局给画面一个合适的高度上限 */
+/* 每种布局按"能用多少高度"给画面定尺寸（宽度 = 高度 ÷ 2） */
 :root[data-layout="master-detail"] {
-  --screen-max: 56vh;
+  /*
+   * 扣掉页面留白 + 设备标题行 + 控制条 + 一点余量。
+   *
+   * 280 这个数字是量出来的，不是拍的：画面给到 900px 时，整页会比视口高
+   * 约 36px —— 底部的 Home/Back 要滚动才点得到，操作时很难受。
+   * 再配合下面把标题行/控制条/内边距各收一点，就能整体放进一屏。
+   */
+  --screen-max: min(calc(100vh - 300px), 1000px);
 }
 
 :root[data-layout="table"] {
-  --screen-max: 50vh;
+  /* 右侧栏内宽只有 ~348px，所以还要限宽高：320 宽正好放得下 */
+  --screen-max: min(calc(100vh - 330px), 640px);
 }
 
 :root[data-layout="studio"] {
-  --screen-max: 68vh;
+  --screen-max: calc(100vh - 260px);
 }
 
 /* 设备墙的横幅只是"预览条"，画面要小 —— 不能占掉半屏 */
 :root[data-layout="wall"] {
-  --screen-max: 168px;
+  --screen-max: 280px;
 }
 
 .screen-frame-tbl .screen-content,

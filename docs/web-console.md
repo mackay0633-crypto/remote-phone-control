@@ -179,8 +179,8 @@ npm run build --workspace web      # 产物在 web/dist/
 
 | # | 预设 | 布局 | 主题 | 结构上的区别 |
 |---|---|---|---|---|
-| 1 | 经典 | `classic` | `neon` | 顶部大标题 + 四张指标卡 + 左画面右**卡片墙**（与线上现状一致） |
-| 2 | 主从三栏 | `master-detail` | `light` | **导航移到左侧竖栏**；设备变**行列表**；画面独立成中栏；右侧信息栏 |
+| 1 | 经典 | `classic` | `neon` | 顶部大标题 + 四张指标卡 + 左画面右**卡片墙** |
+| 2 | **主从三栏（当前默认）** | `master-detail` | `light` | **导航移到左侧竖栏**；设备变**行列表**；画面独立成中栏；右侧信息栏 |
 | 3 | 表格密集 | `table` | `corporate` | 整页是**一张八列设备表**（一台一行），画面嵌在右侧固定栏 |
 | 4 | 工作台 | `studio` | `terminal` | **画面优先**（约占 2/3 视口），设备变**芯片**，右侧窄工具条 |
 | 5 | 设备墙 | `wall` | `warm` | **墙为主体** + 顶部一条扁预览横幅 —— 与经典的主次正好相反 |
@@ -209,7 +209,11 @@ node scripts/dev-web-test.mjs        # 起前端（8090）
 
 ### 换默认方案
 
-改 `theme.ts` 里的 `DEFAULT_THEME` / `DEFAULT_LAYOUT` 各一行。
+改 `theme.ts` 里的 `DEFAULT_THEME` / `DEFAULT_LAYOUT` 各一行。当前默认是
+**主从三栏 + 浅色**（`master-detail` + `light`）。
+
+想让默认布局配深色，把 `DEFAULT_THEME` 改回 `"neon"` 即可 ——
+布局与主题是两个独立的轴，任意组合都成立。
 
 ### 加一套新布局
 
@@ -221,15 +225,33 @@ node scripts/dev-web-test.mjs        # 起前端（8090）
 4. 在 `layouts/layout.css` 里加位置/尺寸规则（**不写颜色**）
 5. 在 `public/preview.html` 的 `PRESETS` 加一行
 
-> ⚠️ **新增布局必须自己处理画面尺寸。** 基础样式 `styles.css` 是给经典布局量的：
-> `.screen-frame` / `.screen-content` **硬编码 `min-height: 600px`**，
-> `.device-video-shell` 死写 300×600。而在 CSS 里 **`min-height` 永远赢过
-> `max-height`** —— 所以想在小外框里放画面，光写 `max-height` 完全无效
-> （踩过：改完截图一看纹丝不动）。
+> ⚠️ **新增布局必须自己处理画面尺寸 —— 这里有两个连环坑，都踩过。**
+> 基础样式 `styles.css` 是给经典布局量的：`.screen-frame` / `.screen-content`
+> **硬编码 `min-height: 600px`**，`.device-video-shell` 死写 `width: 300px;
+> height: 600px`。
 >
-> 做法是靠 `<html data-layout>` 按布局整体覆盖：先 `min-height: 0`，
-> 再让手机框 `aspect-ratio` + `max-height: var(--screen-max)` 自动跟随。
-> 画面高度上限在 `layout.css` 里按 `[data-layout="…"]` 给。
+> **坑 1：`min-height` 永远赢过 `max-height`。** 所以想在小外框里放画面，
+> 光写 `max-height` 没用，得先把 `min-height` 归零。
+>
+> **坑 2（更隐蔽）：把宽高改成 `auto` 也不行。** `width: auto` 时宽度由
+> `<video>` 的**固有宽度**决定 —— Chrome 在无媒体数据时是 300px，
+> 高度再按 `aspect-ratio` 推成 600。于是 `max-height: 900px` 形同虚设，
+> 画面永远 302×604；而且它会**把画面拉扁**（`max-height` 只压高度、宽度不动）。
+>
+> 正确做法是给**明确的高度**，宽度才会按宽高比推导：
+>
+> ```css
+> :root:not([data-layout="classic"]) .device-video-shell {
+>   width: auto;
+>   height: var(--screen-max);   /* 必须明确 */
+>   max-height: none;
+>   aspect-ratio: 300 / 600;
+> }
+> ```
+>
+> `--screen-max` 按布局给，且用 `calc(100vh - Npx)` 随视口自适应；
+> **N 要量出来**：N 偏小 → 底部控制按钮被挤出屏幕，操作时得滚动，很难受
+> （排查用的 `--eval` 打印 `document.documentElement.scrollHeight` 一眼就能看出）。
 
 ### 加一套新主题
 

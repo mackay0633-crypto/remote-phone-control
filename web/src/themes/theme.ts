@@ -21,7 +21,7 @@ export const THEMES = [
 export type ThemeId = (typeof THEMES)[number]["id"];
 
 /** 兜底风格。改这一行就能换掉默认观感（其余四套仍然可用）。 */
-export const DEFAULT_THEME: ThemeId = "neon";
+export const DEFAULT_THEME: ThemeId = "light";
 
 const STORAGE_KEY = "rpc.ui.theme";
 
@@ -120,7 +120,13 @@ export function usesSidebar(layout: LayoutId): boolean {
   return SIDEBAR_LAYOUTS.includes(layout);
 }
 
-export const DEFAULT_LAYOUT: LayoutId = "classic";
+/**
+ * 默认布局。
+ *
+ * 定的是「主从三栏」：导航在左侧竖栏、设备是行列表、画面独立成中栏。
+ * 它比经典布局一屏能多扫到几倍的设备，同时画面还是独占一栏。
+ */
+export const DEFAULT_LAYOUT: LayoutId = "master-detail";
 
 const LAYOUT_KEY = "rpc.ui.layout";
 
