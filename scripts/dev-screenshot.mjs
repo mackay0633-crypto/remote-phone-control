@@ -83,6 +83,37 @@ function findBrowser() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 生成"按文字点按钮"的页面内脚本。
+ *
+ * 不能只用精确匹配：侧栏导航的按钮文本是 `⚙自动化`（图标 + 文字），
+ * 精确比对永远找不到。所以先精确匹配，找不到再退化成**包含匹配**，
+ * 并在多个候选中取文本最短的那个（否则会命中包住一切的祖先容器）。
+ */
+function clickByText(label) {
+  return `
+    (() => {
+      const norm = (value) => (value || "").replace(/\\s+/g, "");
+      const buttons = [...document.querySelectorAll("button")];
+      const wanted = norm(${JSON.stringify(label)});
+
+      const exact = buttons.find((b) => norm(b.textContent) === wanted);
+      if (exact) {
+        exact.click();
+        return "clicked-exact";
+      }
+
+      const loose = buttons
+        .filter((b) => norm(b.textContent).includes(wanted))
+        .sort((a, b) => norm(a.textContent).length - norm(b.textContent).length);
+
+      if (loose.length === 0) return "not-found";
+      loose[0].click();
+      return "clicked-loose";
+    })()
+  `;
+}
+
 // ────────────────────────── CDP 小客户端 ──────────────────────────
 class Cdp {
   constructor(socket) {
@@ -254,31 +285,13 @@ async function main() {
     // 5) 切视图：顶部导航按钮的文本就是视图名
     if (VIEW !== "console") {
       const label = VIEW === "automation" ? "自动化" : VIEW === "admin" ? "管理" : VIEW;
-      const clicked = await cdp.evaluate(`
-        (() => {
-          const buttons = [...document.querySelectorAll("button")];
-          const hit = buttons.find((b) => (b.textContent || "").trim() === ${JSON.stringify(label)});
-          if (!hit) return "not-found";
-          hit.click();
-          return "clicked";
-        })()
-      `);
-      console.log(`切到「${label}」：${clicked}`);
+      console.log(`切到「${label}」：${await cdp.evaluate(clickByText(label))}`);
     }
 
     // 5b) 再按文字点一个按钮（用来切子标签页，如「养号」/「发视频」）
     if (args.click) {
       const target = String(args.click);
-      const clicked = await cdp.evaluate(`
-        (() => {
-          const buttons = [...document.querySelectorAll("button")];
-          const hit = buttons.find((b) => (b.textContent || "").trim() === ${JSON.stringify(target)});
-          if (!hit) return "not-found";
-          hit.click();
-          return "clicked";
-        })()
-      `);
-      console.log(`点击「${target}」：${clicked}`);
+      console.log(`点击「${target}」：${await cdp.evaluate(clickByText(target))}`);
     }
 
     // 5c) 截图前跑一段页面内 JS（用来验证交互效果，比如点一下置灰项看提示）

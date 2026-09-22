@@ -163,18 +163,29 @@ npm run build --workspace web      # 产物在 web/dist/
 
 **不需要任何构建时变量**，产物本身就是通用的。
 
-## 视觉风格（5 套，可切换）
+## 界面方案：布局 × 主题（两个独立的轴）
 
-界面有 5 套视觉风格，同一份代码、同一套布局，只是配色 / 圆角 / 阴影 /
-**密度**不同。
+界面有**两个正交的轴**，5 套预设 = 两轴的组合：
 
-| id | 名称 | 定位 |
+| 轴 | 决定什么 | 代码在哪 |
 |---|---|---|
-| `neon` | 深色霓虹 | **默认**。玻璃拟态，最像"产品" |
-| `light` | 极简浅色 | 白底细边框、几乎无阴影，适合长时间盯表格 |
-| `terminal` | 终端绿 | 纯黑 + 全等宽 + 直角，运维味 |
-| `corporate` | 企业蓝 | 浅灰蓝、间距最紧、卡片最小 → **一屏放最多设备** |
-| `warm` | 暖色柔和 | 深色暖棕 + 琥珀，圆角最大最松，久看不累 |
+| **布局 layout** | 东西**摆在哪**：导航位置、设备怎么表现、画面占多大 | `web/src/layouts/` |
+| **主题 theme** | **什么颜色**：配色、圆角、阴影、密度 | `web/src/themes/` |
+
+分开的价值：能自由组合（`?layout=table&theme=warm`），也能各自独立演进。
+**布局文件里不写颜色，主题文件里不写尺寸** —— 混了以后就没法组合了。
+
+### 五套预设
+
+| # | 预设 | 布局 | 主题 | 结构上的区别 |
+|---|---|---|---|---|
+| 1 | 经典 | `classic` | `neon` | 顶部大标题 + 四张指标卡 + 左画面右**卡片墙**（与线上现状一致） |
+| 2 | 主从三栏 | `master-detail` | `light` | **导航移到左侧竖栏**；设备变**行列表**；画面独立成中栏；右侧信息栏 |
+| 3 | 表格密集 | `table` | `corporate` | 整页是**一张八列设备表**（一台一行），画面嵌在右侧固定栏 |
+| 4 | 工作台 | `studio` | `terminal` | **画面优先**（约占 2/3 视口），设备变**芯片**，右侧窄工具条 |
+| 5 | 设备墙 | `wall` | `warm` | **墙为主体** + 顶部一条扁预览横幅 —— 与经典的主次正好相反 |
+
+五套在四件事上各不相同：**导航在哪 / 设备怎么表现 / 画面占多大 / 信息层级**。
 
 ### 怎么预览
 
@@ -185,35 +196,56 @@ node scripts/dev-web-test.mjs        # 起前端（8090）
 | 目的 | 地址 |
 |---|---|
 | **五套并排对比** | http://127.0.0.1:8090/preview.html |
-| 单看一套 | http://127.0.0.1:8090/?theme=light |
+| 单看一套 | http://127.0.0.1:8090/?layout=table&theme=corporate |
 | 带切换器 | http://127.0.0.1:8090/?preview=1 |
+| 混搭 | http://127.0.0.1:8090/?layout=studio&theme=warm |
 
 `preview.html` 里是**五个真实的 iframe**（不是截图），每一格都能点、能切页签；
-点"全屏打开"可以看到完整页面。右上角的「🎨 风格」切换器**只在带 `?theme=` 或
-`?preview=1` 时出现** —— 普通用户不该看到换肤开关。
+点"全屏打开"看完整页面。右上角的「🎨 方案」切换器**只在带 `?layout=` /
+`?theme=` / `?preview=1` 时出现** —— 普通用户不该看到换方案的开关。
 
-选择会存进 `localStorage`（`rpc.ui.theme`）。地址栏的 `?theme=` **优先于**
-localStorage：否则预览页里五个 iframe 会同时显示同一个风格。
+选择存进 `localStorage`（`rpc.ui.theme` / `rpc.ui.layout`）。地址栏参数
+**优先于** localStorage：否则预览页里五个 iframe 会同时显示同一套。
 
-### 换默认风格
+### 换默认方案
 
-改 `web/src/themes/theme.ts` 里的 `DEFAULT_THEME` 一行即可，其余四套仍然可用。
+改 `theme.ts` 里的 `DEFAULT_THEME` / `DEFAULT_LAYOUT` 各一行。
 
-### 加一套新风格
+### 加一套新布局
+
+1. 在 `layouts/pieces.tsx` 里挑现成零件（`FocusScreen`、`ControlBar`、`DeviceList`、
+   `DeviceTable`、`DeviceChips`、`DeviceTiles`、`StatStrip`、`metaFields`），
+   在 `layouts/shells.tsx` 里拼一个新外壳
+2. 在 `shapes.tsx` 的 `ConsoleLayout` 分发里加一个 case
+3. 在 `theme.ts` 的 `LAYOUTS` 加一行；需要左侧导航就加进 `SIDEBAR_LAYOUTS`
+4. 在 `layouts/layout.css` 里加位置/尺寸规则（**不写颜色**）
+5. 在 `public/preview.html` 的 `PRESETS` 加一行
+
+> ⚠️ **新增布局必须自己处理画面尺寸。** 基础样式 `styles.css` 是给经典布局量的：
+> `.screen-frame` / `.screen-content` **硬编码 `min-height: 600px`**，
+> `.device-video-shell` 死写 300×600。而在 CSS 里 **`min-height` 永远赢过
+> `max-height`** —— 所以想在小外框里放画面，光写 `max-height` 完全无效
+> （踩过：改完截图一看纹丝不动）。
+>
+> 做法是靠 `<html data-layout>` 按布局整体覆盖：先 `min-height: 0`，
+> 再让手机框 `aspect-ratio` + `max-height: var(--screen-max)` 自动跟随。
+> 画面高度上限在 `layout.css` 里按 `[data-layout="…"]` 给。
+
+### 加一套新主题
 
 不需要复制样式表。规则只在 `web/src/themes/palette.css` 里写一遍，
-风格只提供变量：
+主题只提供变量：
 
 1. 在 `themes.css` 里加一个 `:root[data-theme="新id"] { --accent: …; … }`，
-   照抄 `neon` 那一块，改值即可（**别漏**密度那 10 个变量，
+   照抄 `neon` 那一块改值即可（**别漏**密度那 10 个变量，
    漏了会回退成基础样式，看起来像"没生效"）
-2. 在 `theme.ts` 的 `THEMES` 里加一行（id / 名称 / 说明）
-3. 在 `public/preview.html` 的 `THEMES` 里加一行（预览页用它渲染）
+2. 在 `theme.ts` 的 `THEMES` 里加一行
+3. 在 `public/preview.html` 的 `PRESETS` 里引用它
 
 > ⚠️ **两条顺序约束**，反了就会出怪问题：
-> - `palette.css` / `themes.css` 必须在 `styles.css` **之后**加载
->   （它们靠 `[data-theme]` 前缀提高特异性压过基础样式）
-> - `initTheme()` 必须在 React 渲染**之前**调用，否则会先按默认色画一帧再变色
+> - `layouts/layout.css` 与 `themes/*.css` 必须在 `styles.css` **之后**加载
+>   （它们靠 `[data-layout]` / `[data-theme]` 前缀提高特异性压过基础样式）
+> - `initTheme()` / `applyLayout()` 必须在 React 渲染**之前**调用
 
 **测试**：`node .tmp-test/check-theme-vars.mjs` 这类校验脚本能查出"某套漏了
 变量"。更可靠的是直接看 —— 五宫格截图一眼就能发现某格没生效。

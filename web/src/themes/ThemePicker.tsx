@@ -1,40 +1,46 @@
 import { useState } from "react";
-import { THEMES, isPreviewMode, resolveTheme, setTheme, type ThemeId } from "./theme";
+import { PRESETS, isPreviewMode, type LayoutId, type ThemeId } from "./theme";
 
 /**
- * 风格切换器。
+ * 风格 / 布局切换器（仅预览模式）。
  *
- * **只在预览模式下出现**（URL 带 `?theme=` 或 `?preview=1`）—— 正常用户不该
- * 看到"给界面换皮"这种开关，最终只会定一套风格发布。
- *
- * 要对比五套：打开 `preview.html`（五宫格，一格一套）。
+ * 列的是**五套预设**（布局 × 主题），因为"哪套好看"是按整页效果判断的，
+ * 单独换颜色或单独换布局都不好选。想混搭就用地址栏的
+ * `?layout=table&theme=warm`（两个参数独立生效）。
  */
-export function ThemePicker() {
-  const [theme, setThemeState] = useState<ThemeId>(resolveTheme);
+export function ThemePicker({
+  layout,
+  theme,
+  onPick
+}: {
+  layout: LayoutId;
+  theme: ThemeId;
+  onPick: (layout: LayoutId, theme: ThemeId) => void;
+}) {
   const [open, setOpen] = useState(false);
 
   if (!isPreviewMode()) {
     return null;
   }
 
-  const current = THEMES.find((item) => item.id === theme) ?? THEMES[0];
+  const current = PRESETS.find((item) => item.layout === layout && item.theme === theme);
+  const label = current ? current.label : `${layout} · ${theme}`;
 
   return (
     <div className="theme-picker">
       <button type="button" className="theme-picker-toggle" onClick={() => setOpen((value) => !value)}>
-        🎨 风格：{current.label}
+        🎨 方案：{label}
       </button>
 
       {open ? (
         <div className="theme-picker-menu">
-          {THEMES.map((item) => (
+          {PRESETS.map((item) => (
             <button
               key={item.id}
               type="button"
-              className={`theme-picker-item ${item.id === theme ? "active" : ""}`}
+              className={`theme-picker-item ${item.layout === layout && item.theme === theme ? "active" : ""}`}
               onClick={() => {
-                setTheme(item.id);
-                setThemeState(item.id);
+                onPick(item.layout, item.theme);
                 setOpen(false);
               }}
             >
@@ -43,7 +49,7 @@ export function ThemePicker() {
             </button>
           ))}
           <div className="theme-picker-note">
-            也可直接用地址栏：<code>?theme=light</code>
+            混搭：<code>?layout=table&theme=warm</code>
           </div>
         </div>
       ) : null}

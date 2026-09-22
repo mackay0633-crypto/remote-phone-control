@@ -1,0 +1,750 @@
+/**
+ * 布局结构相关的样式。
+ *
+ * 与 `themes/palette.css` 分工不同：
+ *   themes/  解决"什么颜色"
+ *   layouts/ 解决"东西摆在哪、多大"   ← 这个文件
+ *
+ * 所以这里**不写颜色**，颜色一律走主题变量；反过来主题也不写尺寸。
+ * 两个轴正交，就能自由组合（比如"表格布局 + 暖色主题"）。
+ */
+
+/* ── 细长统计条（表格/工作台/设备墙用）──────────────────────── */
+
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+}
+
+.stat-strip-item {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.stat-strip-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+  text-transform: uppercase;
+}
+
+.stat-strip-value {
+  font-family: var(--font-mono-display);
+  font-size: 17px;
+  color: var(--text-strong);
+}
+
+/* ── 2. 主从布局：设备行列表 + 画面 + 信息栏 ─────────────────── */
+
+.md-shell {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 270px;
+  gap: 18px;
+  align-items: start;
+}
+
+.md-list,
+.md-stage,
+.md-info {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  backdrop-filter: var(--panel-blur);
+  box-shadow: var(--shadow-panel);
+}
+
+.md-list {
+  padding: 16px;
+  /* 列表自己滚，页面不跟着长 —— 设备多时这是关键差别 */
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+
+.md-list-head {
+  margin-bottom: 12px;
+}
+
+.md-list-title {
+  margin: 6px 0 0;
+  font-size: 20px;
+}
+
+.md-list-error {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.md-stage {
+  padding: 18px;
+}
+
+.md-stage-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.md-stage-title {
+  margin: 6px 0 2px;
+  font-size: 24px;
+  font-family: var(--font-display);
+  color: var(--text-strong);
+}
+
+.md-stage-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono-display);
+}
+
+.md-info {
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+}
+
+.md-info-list {
+  display: grid;
+  gap: 0;
+  margin: 8px 0 0;
+}
+
+.md-info-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--border-faint);
+}
+
+.md-info-row:last-child {
+  border-bottom: 0;
+}
+
+.md-info-row dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.md-info-row dd {
+  margin: 0;
+  font-family: var(--font-mono-display);
+  font-size: 12px;
+  color: var(--text-strong);
+  text-align: right;
+  word-break: break-all;
+}
+
+/* 设备行列表 */
+.device-list {
+  display: grid;
+  gap: 4px;
+}
+
+.device-list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+}
+
+.device-list-row:hover {
+  background: var(--surface-sunken);
+}
+
+.device-list-row.selected {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.device-list-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.device-list-title {
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.device-list-sub {
+  font-family: var(--font-mono-display);
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-list-tail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.device-list-meta {
+  font-family: var(--font-mono-display);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.device-list-status {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.device-list-status.online {
+  color: var(--success);
+}
+
+.device-list-status.offline {
+  color: var(--danger);
+}
+
+.device-list-status.unauthorized {
+  color: var(--warn);
+}
+
+.device-list.compact .device-list-row {
+  padding: 6px 8px;
+}
+
+/* ── 3. 表格布局 ─────────────────────────────────────────── */
+
+.tbl-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.tbl-top {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.tbl-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 14px;
+  align-items: start;
+}
+
+.tbl-main,
+.tbl-side {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  backdrop-filter: var(--panel-blur);
+  box-shadow: var(--shadow-panel);
+}
+
+.tbl-main {
+  padding: 14px 16px 16px;
+}
+
+.tbl-main-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.tbl-main-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-family: var(--font-display);
+}
+
+.tbl-side {
+  padding: 16px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.tbl-side-head {
+  margin-bottom: 12px;
+}
+
+.tbl-side-head h3 {
+  margin: 5px 0 2px;
+  font-size: 18px;
+}
+
+.device-table {
+  display: grid;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.device-table-head,
+.device-table-row {
+  display: grid;
+  grid-template-columns: 44px 96px minmax(90px, 1fr) minmax(140px, 1.4fr) 56px 104px 68px 72px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.device-table-head {
+  background: var(--surface-sunken);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.device-table-row {
+  border: 0;
+  border-top: 1px solid var(--border-faint);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.device-table-row:hover {
+  background: var(--surface-sunken);
+}
+
+.device-table-row.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.device-table-index,
+.device-table-mono {
+  font-family: var(--font-mono-display);
+  color: var(--text-muted);
+}
+
+.device-table-strong {
+  color: var(--text-strong);
+}
+
+.device-table-row > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 4. 工作台：大画面 + 窄侧栏 ──────────────────────────── */
+
+.std-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.std-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.std-bar-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--text-strong);
+}
+
+.std-bar-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+.std-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 12px;
+  align-items: start;
+}
+
+.std-screen,
+.std-side {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  backdrop-filter: var(--panel-blur);
+  box-shadow: var(--shadow-panel);
+}
+
+.std-screen {
+  padding: 14px;
+}
+
+.std-side {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+
+.device-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.device-chip {
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-chip);
+  background: var(--button-bg);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.device-chip:hover {
+  border-color: var(--accent-border);
+}
+
+.device-chip.selected {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text-strong);
+}
+
+.device-chip.offline {
+  opacity: 0.5;
+}
+
+/* ── 5. 设备墙：横幅预览 + 密集砖块 ─────────────────────── */
+
+.wall-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.wall-banner {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  backdrop-filter: var(--panel-blur);
+  box-shadow: var(--shadow-panel);
+}
+
+.wall-banner-info h2 {
+  margin: 6px 0 4px;
+  font-size: 24px;
+  font-family: var(--font-display);
+  color: var(--text-strong);
+}
+
+.wall-body {
+  padding: 16px 18px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  backdrop-filter: var(--panel-blur);
+  box-shadow: var(--shadow-panel);
+}
+
+.wall-body-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.wall-body-head h2 {
+  margin: 0;
+  font-size: 20px;
+  font-family: var(--font-display);
+}
+
+.device-tiles {
+  display: grid;
+  /* 比卡片墙小得多：砖块是"看状态"的，不是"看详情"的 */
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 8px;
+}
+
+.device-tile {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 9px 10px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+}
+
+.device-tile:hover {
+  border-color: var(--accent-border);
+}
+
+.device-tile.selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-card-selected);
+}
+
+.device-tile.offline {
+  opacity: 0.55;
+}
+
+.device-tile-model {
+  font-size: 12px;
+  color: var(--text-strong);
+}
+
+.device-tile-serial {
+  font-family: var(--font-mono-display);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ── 画面尺寸：按布局整体覆盖基础样式里的固定尺寸 ──────────
+ *
+ * 基础样式是给经典布局量的：`.screen-frame` / `.screen-content`
+ * **硬编码 min-height: 600px**，`.device-video-shell` 死写 300×600。
+ *
+ * 关键坑：**CSS 里 min-height 永远赢过 max-height**。所以想在小外框里放画面，
+ * 光写 max-height 是没用的（第一版就是这么改的，截图一看纹丝不动）——
+ * 必须先把 min-height 归零，再让手机框按宽高比跟随高度。
+ */
+
+:root:not([data-layout="classic"]) .screen-frame,
+:root:not([data-layout="classic"]) .screen-content {
+  min-height: 0;
+}
+
+:root:not([data-layout="classic"]) .screen-frame {
+  margin-top: 0;
+  padding: 0;
+}
+
+/* 高度受限时宽度自动跟随，避免画面被压扁 */
+:root:not([data-layout="classic"]) .device-video-shell {
+  width: auto;
+  height: auto;
+  aspect-ratio: 300 / 600;
+  max-height: var(--screen-max, 58vh);
+  max-width: 100%;
+}
+
+:root:not([data-layout="classic"]) .screen-content {
+  padding: 14px 12px;
+}
+
+/* 每种布局给画面一个合适的高度上限 */
+:root[data-layout="master-detail"] {
+  --screen-max: 56vh;
+}
+
+:root[data-layout="table"] {
+  --screen-max: 50vh;
+}
+
+:root[data-layout="studio"] {
+  --screen-max: 68vh;
+}
+
+/* 设备墙的横幅只是"预览条"，画面要小 —— 不能占掉半屏 */
+:root[data-layout="wall"] {
+  --screen-max: 168px;
+}
+
+.screen-frame-tbl .screen-content,
+.screen-frame-wall .screen-content {
+  min-height: 0;
+}
+
+/* 窄栏里元信息两列会挤，改成单列 */
+.device-meta-grid.compact {
+  grid-template-columns: 1fr;
+}
+
+/* ── 左侧导航竖栏（仅「主从三栏」布局）─────────────────────
+ *
+ * 这是五套里**唯一改变导航位置**的布局。顶部横幅会横向吃掉一整条高度，
+ * 而主从三栏的价值就在于中间的设备列表能多列几行，所以导航挪到左边。
+ * 颜色仍走主题变量，这里只管位置与尺寸。
+ */
+
+.app-shell.has-side-rail {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.side-rail {
+  position: sticky;
+  top: var(--space-shell);
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  padding: 18px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  backdrop-filter: var(--panel-blur);
+  box-shadow: var(--shadow-panel);
+}
+
+.side-rail-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
+}
+
+.side-rail-logo {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--accent-on);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.side-rail-brand-text {
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: var(--display-spacing);
+  color: var(--text-strong);
+}
+
+.side-rail-nav {
+  display: grid;
+  gap: 4px;
+}
+
+.side-rail-nav button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-rail-nav button:hover {
+  background: var(--surface-sunken);
+  color: var(--text-strong);
+}
+
+.side-rail-nav button.active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text-strong);
+}
+
+.side-rail-icon {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.side-rail-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 6px 0;
+  border-top: 1px solid var(--border-faint);
+}
+
+.side-rail-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.side-rail-actions .top-bar-action,
+.side-rail-actions .theme-picker-toggle {
+  width: 100%;
+  text-align: center;
+}
+
+.side-rail-actions .theme-picker-menu {
+  right: auto;
+  left: 0;
+}
+
+.shell-main {
+  min-width: 0;
+  display: grid;
+  gap: var(--gap-panel);
+  align-content: start;
+}
+
+/* ── 窄屏回退：四套新布局在窄屏下都退化成一列，避免横向滚动 ── */
+
+@media (max-width: 1180px) {
+  .md-shell,
+  .std-body,
+  .tbl-body,
+  .wall-banner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .md-list,
+  .md-info,
+  .std-side,
+  .tbl-side {
+    max-height: none;
+  }
+
+  /* 窄屏下左栏会挤掉内容，退回顶部导航 */
+  .app-shell.has-side-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .side-rail {
+    position: static;
+  }
+}

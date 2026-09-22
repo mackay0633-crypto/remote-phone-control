@@ -7,11 +7,22 @@ import { LoginView, createLocalUser } from "./LoginView";
 import { USE_RELAY, fetchMe, logout } from "./api/client";
 import { clearSession, loadSession, saveSession, type SessionUser, type StoredSession } from "./api/session";
 import { ThemePicker } from "./themes/ThemePicker";
+import {
+  resolveLayout,
+  resolveTheme,
+  setLayout,
+  setTheme,
+  usesSidebar,
+  type LayoutId,
+  type ThemeId
+} from "./themes/theme";
 import "./styles.css";
 // 主题覆盖层与五套变量必须在 styles.css **之后**加载：它们靠 [data-theme] 前缀
 // 提高特异性压过基础样式，顺序反了就会被基础样式盖回去
 import "./themes/palette.css";
 import "./themes/themes.css";
+// 布局结构的样式（只管摆位与尺寸，不管颜色）
+import "./layouts/layout.css";
 
 type View = "console" | "automation" | "admin";
 
@@ -31,6 +42,9 @@ export function App() {
   const [verifying, setVerifying] = useState(() => USE_RELAY && loadSession() !== null);
   const [view, setView] = useState<View>("console");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 布局与主题是两个独立的轴：布局决定"摆在哪"，主题决定"什么颜色"
+  const [layout, setLayoutState] = useState<LayoutId>(resolveLayout);
+  const [theme, setThemeState] = useState<ThemeId>(resolveTheme);
 
   useEffect(() => {
     if (!USE_RELAY) {
@@ -165,83 +179,115 @@ export function App() {
   const isAdmin = session.user.role === "admin";
   // 非管理员不能进管理页；服务端同样会 403。控制台与自动化所有人可见。
   const activeView: View = !isAdmin && view === "admin" ? "console" : view;
+  const sidebar = usesSidebar(layout);
+
+  /** 导航项只定义一次，顶栏与左栏两种摆法共用 */
+  const navItems: { id: View; label: string; icon: string }[] = [
+    { id: "console", label: "控制台", icon: "▤" },
+    { id: "automation", label: "自动化", icon: "⚙" },
+    ...(isAdmin ? [{ id: "admin" as View, label: "管理", icon: "◉" }] : [])
+  ];
+
+  const navButtons = (className: string) => (
+    <div className={className}>
+      {navItems.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={activeView === item.id ? "active" : ""}
+          onClick={() => setView(item.id)}
+        >
+          {className === "side-rail-nav" ? <span className="side-rail-icon">{item.icon}</span> : null}
+          <span>{item.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const actions = (
+    <div className={sidebar ? "side-rail-actions" : "top-bar-actions"}>
+      {/* 只在预览模式下出现（?theme= / ?layout= / ?preview=1），正常用户看不到 */}
+      <ThemePicker
+        layout={layout}
+        theme={theme}
+        onPick={(nextLayout, nextTheme) => {
+          setLayoutState(nextLayout);
+          setLayout(nextLayout);
+          setThemeState(nextTheme);
+          setTheme(nextTheme);
+        }}      />
+      {USE_RELAY ? (
+        <>
+          <button type="button" className="top-bar-action neutral" onClick={() => setSettingsOpen(true)}>
+            账号设置
+          </button>
+          <button type="button" className="top-bar-action" onClick={() => void handleLogout()}>
+            退出登录
+          </button>
+        </>
+      ) : (
+        <span className="top-bar-note">本地直连模式</span>
+      )}
+    </div>
+  );
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${sidebar ? "has-side-rail" : ""}`}>
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
 
-      <div className="top-bar">
-        <div className="top-bar-identity">
-          <span className={`role-badge ${session.user.role}`}>{isAdmin ? "管理员" : "客户"}</span>
-          <span className="top-bar-username">{session.user.username}</span>
-        </div>
-
-        <div className="top-bar-nav">
-          <button
-            type="button"
-            className={activeView === "console" ? "active" : ""}
-            onClick={() => setView("console")}
-          >
-            控制台
-          </button>
-          <button
-            type="button"
-            className={activeView === "automation" ? "active" : ""}
-            onClick={() => setView("automation")}
-          >
-            自动化
-          </button>
-          {isAdmin ? (
-            <button
-              type="button"
-              className={activeView === "admin" ? "active" : ""}
-              onClick={() => setView("admin")}
-            >
-              管理
-            </button>
-          ) : null}
-        </div>
-
-        {USE_RELAY ? (
-          <div className="top-bar-actions">
-            {/* 只在预览模式下出现（?theme= 或 ?preview=1），正常用户看不到 */}
-            <ThemePicker />
-            <button type="button" className="top-bar-action neutral" onClick={() => setSettingsOpen(true)}>
-              账号设置
-            </button>
-            <button type="button" className="top-bar-action" onClick={() => void handleLogout()}>
-              退出登录
-            </button>
+      {sidebar ? (
+        <aside className="side-rail">
+          <div className="side-rail-brand">
+            <span className="side-rail-logo">外</span>
+            <span className="side-rail-brand-text">外贸易</span>
           </div>
-        ) : (
-          <div className="top-bar-actions">
-            <ThemePicker />
-            <span className="top-bar-note">本地直连模式</span>
-          </div>
-        )}
-      </div>
 
-      {settingsOpen ? (
-        <AccountSettings
-          user={session.user}
-          onClose={() => setSettingsOpen(false)}
-          onUserChanged={handleUserChanged}
-          onTokenRefreshed={handleTokenRefreshed}
-        />
+          {navButtons("side-rail-nav")}
+
+          <div className="side-rail-user">
+            <span className={`role-badge ${session.user.role}`}>{isAdmin ? "管理员" : "客户"}</span>
+            <span className="top-bar-username">{session.user.username}</span>
+          </div>
+
+          {actions}
+        </aside>
       ) : null}
 
-      {activeView === "admin" ? (
-        <AdminView user={session.user} />
-      ) : activeView === "automation" ? (
-        <AutomationView token={session.token} user={session.user} />
-      ) : (
-        <ConsoleView
-          token={session.token}
-          user={session.user}
-          onCapabilitiesChanged={handleCapabilitiesChanged}
-        />
-      )}
+      <div className={sidebar ? "shell-main" : undefined}>
+        {sidebar ? null : (
+          <div className="top-bar">
+            <div className="top-bar-identity">
+              <span className={`role-badge ${session.user.role}`}>{isAdmin ? "管理员" : "客户"}</span>
+              <span className="top-bar-username">{session.user.username}</span>
+            </div>
+            {navButtons("top-bar-nav")}
+            {actions}
+          </div>
+        )}
+
+        {settingsOpen ? (
+          <AccountSettings
+            user={session.user}
+            onClose={() => setSettingsOpen(false)}
+            onUserChanged={handleUserChanged}
+            onTokenRefreshed={handleTokenRefreshed}
+          />
+        ) : null}
+
+        {activeView === "admin" ? (
+          <AdminView user={session.user} />
+        ) : activeView === "automation" ? (
+          <AutomationView token={session.token} user={session.user} />
+        ) : (
+          <ConsoleView
+            token={session.token}
+            user={session.user}
+            layout={layout}
+            onCapabilitiesChanged={handleCapabilitiesChanged}
+          />
+        )}
+      </div>
     </main>
   );
 }

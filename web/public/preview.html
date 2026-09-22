@@ -85,46 +85,43 @@
 </head>
 <body>
   <header>
-    <h1>外贸易 · 风格预览</h1>
+    <h1>外贸易 · 五套布局方案</h1>
     <p>
-      下面是**同一份前端**用五种不同配色渲染的效果。每一格都是真实运行的页面（可以点、可以切页签），
-      不是截图。
+      下面五格是**同一份代码、同一套逻辑**用五种不同的**布局结构**渲染的效果。
+      每一格都是真实运行的页面（能点、能切页签），不是截图。
     </p>
     <p class="hint">
-      单看某一套：<code>?theme=neon</code> / <code>?theme=light</code> / <code>?theme=terminal</code> /
-      <code>?theme=corporate</code> / <code>?theme=warm</code>　·　
-      右上角「🎨 风格」可现场切换　·　选择会记住（<code>localStorage</code>）
+      差别不只在配色，更在结构：<b>导航位置</b>（顶部 / 左侧）、
+      <b>设备怎么表现</b>（卡片 / 行列表 / 表格 / 芯片 / 砖块）、
+      <b>画面占多大</b>、<b>信息层级</b>　·　
+      右上角「🎨 方案」可现场切换　·　也可以混搭：<code>?layout=table&amp;theme=warm</code>
     </p>
   </header>
 
   <div class="grid" id="grid"></div>
 
   <script>
-    // 这五套的 id/名称/说明与 web/src/themes/theme.ts 里的 THEMES 保持一致
-    const THEMES = [
-      { id: "neon", label: "1 · 深色霓虹（当前）", hint: "玻璃拟态，最像产品" },
-      { id: "light", label: "2 · 极简浅色", hint: "白底细边框，看表格不累" },
-      { id: "terminal", label: "3 · 终端绿", hint: "纯黑等宽直角，运维味" },
-      { id: "corporate", label: "4 · 企业蓝", hint: "浅色高密度，一屏最多设备" },
-      { id: "warm", label: "5 · 暖色柔和", hint: "深色暖棕大圆角，久看不累" }
+    // 与 web/src/themes/theme.ts 里的 PRESETS 保持一致
+    const PRESETS = [
+      { layout: "classic", theme: "neon", label: "1 · 经典", hint: "顶部标题 + 左画面右卡片墙（现状）" },
+      { layout: "master-detail", theme: "light", label: "2 · 主从三栏", hint: "导航移到左侧；设备变行列表，画面独立成中栏" },
+      { layout: "table", theme: "corporate", label: "3 · 表格密集", hint: "整页是一张设备表，一屏能管几十台" },
+      { layout: "studio", theme: "terminal", label: "4 · 工作台", hint: "画面占约 2/3 视口；设备变芯片 + 右侧窄工具条" },
+      { layout: "wall", theme: "warm", label: "5 · 设备墙", hint: "墙为主体 + 顶部预览横幅（与经典的主次相反）" }
     ];
 
-    // 每个 iframe 都带 ?preview=1，这样右上角会出现切换器，方便在格子里直接换风格对比
-    const params = new URLSearchParams(location.search);
-    const suffix = params.get("page") ? `&page=${encodeURIComponent(params.get("page"))}` : "";
-
-    document.getElementById("grid").innerHTML = THEMES.map(
-      (theme) => `
+    document.getElementById("grid").innerHTML = PRESETS.map(
+      (preset) => `
         <section class="cell">
           <div class="cell-head">
             <div>
-              <div class="cell-title">${theme.label}</div>
-              <div class="cell-hint">${theme.hint}</div>
+              <div class="cell-title">${preset.label}</div>
+              <div class="cell-hint">${preset.hint}</div>
             </div>
-            <a class="cell-link" href="/?theme=${theme.id}&preview=1${suffix}" target="_blank" rel="noreferrer">全屏打开 ↗</a>
+            <a class="cell-link" href="/?layout=${preset.layout}&theme=${preset.theme}&preview=1" target="_blank" rel="noreferrer">全屏打开 ↗</a>
           </div>
           <div class="frame-box">
-            <iframe src="/?theme=${theme.id}&preview=1${suffix}" loading="lazy" title="${theme.label}"></iframe>
+            <iframe src="/?layout=${preset.layout}&theme=${preset.theme}&preview=1" loading="lazy" title="${preset.label}"></iframe>
           </div>
         </section>
       `

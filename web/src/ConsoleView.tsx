@@ -2,27 +2,24 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import JMuxer from "jmuxer";
 import { API_BASE_URL, RELAY_WS_BASE_URL, USE_RELAY } from "./api/client";
 import type { SessionUser } from "./api/session";
+import { ConsoleLayout, type ConsoleLayoutId } from "./layouts/shells";
+import {
+  deviceKey as getDeviceKey,
+  type ConnectionState,
+  type ConsoleLayoutProps,
+  type DeviceInfo,
+  type DeviceStatus,
+  type DeviceSystemKey,
+  type StreamConnectionState as StreamStatus
+} from "./layouts/types";
 
-type DeviceStatus = "online" | "offline" | "unauthorized" | "unknown";
-type StreamStatus = "idle" | "starting" | "streaming" | "error";
+/**
+ * 设备/流的类型都来自 `layouts/types`，不在这里重复定义 ——
+ * 这套类型是**布局外壳与逻辑之间**的契约，两处各写一份迟早会漂移
+ * （比如一边加了 `agentId` 另一边没有，编译过不了或者行为不一致）。
+ */
 type ControlStatus = "idle" | "ready" | "error";
-type ConnectionState = "connecting" | "live" | "disconnected";
-type StreamConnectionState = "idle" | "connecting" | "live" | "error";
-type DeviceSystemKey = "HOME" | "BACK" | "APP_SWITCH";
 type TouchPhase = "down" | "move" | "up";
-
-interface DeviceInfo {
-  agentId?: string;
-  serial: string;
-  status: DeviceStatus;
-  model: string;
-  androidVersion: string;
-  width: number;
-  height: number;
-  streamStatus: StreamStatus;
-  controlStatus: ControlStatus;
-  transport: "usb" | "tcp";
-}
 
 interface DevicePayload {
   devices: DeviceInfo[];
@@ -84,15 +81,17 @@ interface ConsoleViewProps {
    * 否则页面上的按钮会按登录时的旧权限显示，点了才被服务端拒绝。
    */
   onCapabilitiesChanged?: (capabilities: SessionUser["capabilities"], role: SessionUser["role"]) => void;
+  /** 当前布局结构；由 App 持有（风格切换器会改它），这里只负责渲染 */
+  layout: ConsoleLayoutId;
 }
 
-export function ConsoleView({ token, user, onCapabilitiesChanged }: ConsoleViewProps) {
+export function ConsoleView({ token, user, onCapabilitiesChanged, layout }: ConsoleViewProps) {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string>("");
   const [selectedDeviceKey, setSelectedDeviceKey] = useState<string>("");
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const [streamState, setStreamState] = useState<StreamConnectionState>("idle");
+  const [streamState, setStreamState] = useState<StreamStatus>("idle");
   const [streamMessage, setStreamMessage] = useState<string>("等待选择设备");
   const [controlMessage, setControlMessage] = useState<string>("点击轻触，拖动滑动");
   const [controlPending] = useState(false);
@@ -608,211 +607,42 @@ export function ConsoleView({ token, user, onCapabilitiesChanged }: ConsoleViewP
     );
   }
 
-  return (
-    <>
+  /**
+   * 把逻辑一次性交给布局外壳。
+   *
+   * 五种布局共用这一份 props —— 视频流、触摸转发、选中态都只有一套实现，
+   * 布局只决定"摆在哪"。这样加布局不会引入第二份行为。
+   */
+  const layoutProps: ConsoleLayoutProps = {
+    devices,
+    selectedDevice,
+    selectedKey: selectedDeviceKey,
+    onSelect: setSelectedDeviceKey,
+    onlineCount,
+    tcpCount,
+    canControl,
+    streamState,
+    streamMessage,
+    connectionState,
+    updatedAt,
+    errorMessage,
+    controlMessage,
+    controlPending,
+    onSystemKey: handleSystemKey,
+    videoRef,
+    videoShellRef,
+    onPointerDown: handlePointerDown,
+    onPointerMove: handlePointerMove,
+    onPointerUp: handlePointerUp,
+    onPointerCancel: handlePointerCancel
+  };
 
-      <section className="hero">
-        <div className="hero-copy">
-          <div className="eyebrow">外贸易</div>
-          <h1>单设备实时控制</h1>
-          <p>
-            {canControl
-              ? "你可以直接点击、拖动滑动，并使用系统按键操作 Android。"
-              : "当前账号仅可查看画面，手动操控权限未开启。"}
-          </p>
-        </div>
-
-        <div className="stats-grid">
-          <MetricCard label="已发现设备" value={String(devices.length).padStart(2, "0")} hint="分配给你的设备" />
-          <MetricCard label="在线设备" value={String(onlineCount).padStart(2, "0")} hint="当前可控制" />
-          <MetricCard label="TCP 设备" value={String(tcpCount).padStart(2, "0")} hint="ADB over TCP" />
-          <MetricCard
-            label="视频状态"
-            value={streamState === "live" ? "LIVE" : streamState === "connecting" ? "SYNC" : streamState === "error" ? "ERR" : "IDLE"}
-            hint={streamMessage}
-            accent={streamState !== "error"}
-          />
-        </div>
-      </section>
-
-      <section className="dashboard-grid">
-        <article className="focus-panel">
-          <div className="panel-header">
-            <div>
-              <div className="panel-kicker">当前主选设备</div>
-              <h2>{selectedDevice?.model ?? "暂无设备"}</h2>
-            </div>
-            <StatusPill status={selectedDevice?.status ?? "unknown"} />
-          </div>
-
-          <div className="screen-frame">
-            <div className="screen-glow" />
-            <div className="screen-content video-stage">
-              {selectedDevice ? (
-                <>
-                  {/* 手机视频外层壳，实际尺寸由 styles.css 里的 .device-video-shell 控制 */}
-                  <div
-                    ref={videoShellRef}
-                    className={`device-video-shell ${streamState === "live" && canControl ? "interactive" : ""}`}
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onPointerCancel={handlePointerCancel}
-                    onContextMenu={(event) => event.preventDefault()}
-                  >
-                    {/* 真正的视频元素，显示方式由 .device-video 控制 */}
-                    <video
-                      ref={videoRef}
-                      className={`device-video ${streamState === "live" ? "visible" : ""}`}
-                      autoPlay
-                      muted
-                      playsInline
-                    />
-                  </div>
-                  <div className={`video-overlay ${streamState === "live" ? "subtle" : ""}`}>
-                    <div className="screen-label">
-                      {streamState === "live"
-                        ? canControl
-                          ? "点击轻触，拖动滑动"
-                          : "仅查看（无操控权限）"
-                        : "等待视频流"}
-                    </div>
-                    <div className="screen-resolution">
-                      {selectedDevice.width} x {selectedDevice.height} · {streamMessage}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="screen-label">等待设备接入</div>
-              )}
-            </div>
-          </div>
-
-          <div className="control-toolbar">
-            <div className={`control-status ${controlPending ? "busy" : ""}`}>{controlMessage}</div>
-            <div className="control-button-row">
-              <button
-                type="button"
-                className="control-button"
-                disabled={!canControl}
-                onClick={() => handleSystemKey("HOME")}
-              >
-                Home
-              </button>
-              <button
-                type="button"
-                className="control-button"
-                disabled={!canControl}
-                onClick={() => handleSystemKey("BACK")}
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                className="control-button"
-                disabled={!canControl}
-                onClick={() => handleSystemKey("APP_SWITCH")}
-              >
-                Recent
-              </button>
-            </div>
-          </div>
-
-          <div className="device-meta-grid">
-            <MetaItem label="Serial" value={selectedDevice?.serial ?? "-"} />
-            <MetaItem label="Agent" value={selectedDevice?.agentId ?? "local"} />
-            <MetaItem label="Android" value={selectedDevice?.androidVersion ?? "-"} />
-            <MetaItem label="Transport" value={selectedDevice?.transport ?? "-"} />
-            <MetaItem label="Control" value={canControl ? (selectedDevice?.controlStatus ?? "-") : "disabled"} />
-            <MetaItem label="Device Sync" value={connectionState} />
-            <MetaItem label="Updated" value={updatedAt ? formatTime(updatedAt) : "-"} />
-          </div>
-        </article>
-
-        <section className="device-wall">
-          <div className="panel-header">
-            <div>
-              <div className="panel-kicker">设备卡片墙</div>
-              <h2>我的设备</h2>
-            </div>
-            <div className="panel-note">{errorMessage || "点击任一设备切换实时主画面"}</div>
-          </div>
-
-          <div className="device-grid">
-            {devices.map((device, index) => (
-              <button
-                key={getDeviceKey(device)}
-                className={`device-card ${getDeviceKey(device) === getDeviceKey(selectedDevice) ? "selected" : ""}`}
-                onClick={() => setSelectedDeviceKey(getDeviceKey(device))}
-                type="button"
-              >
-                <div className="device-card-top">
-                  <span className="device-index">#{String(index + 1).padStart(2, "0")}</span>
-                  <StatusPill status={device.status} compact />
-                </div>
-                <div className="device-model">{device.model}</div>
-                <div className="device-serial">{device.serial}</div>
-                <div className="device-details">
-                  <span>{device.transport.toUpperCase()}</span>
-                  <span>{device.width} x {device.height}</span>
-                  <span>Android {device.androidVersion}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      </section>
-    </>
-  );
+  return <ConsoleLayout layout={layout} {...layoutProps} />;
 }
 
-function MetricCard({
-  label,
-  value,
-  hint,
-  accent = true
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  accent?: boolean;
-}) {
-  return (
-    <article className={`metric-card ${accent ? "accent" : ""}`}>
-      <div className="metric-label">{label}</div>
-      <div className="metric-value">{value}</div>
-      <div className="metric-hint">{hint}</div>
-    </article>
-  );
-}
 
-function MetaItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="meta-item">
-      <div className="meta-label">{label}</div>
-      <div className="meta-value">{value}</div>
-    </div>
-  );
-}
 
-function StatusPill({
-  status,
-  compact = false
-}: {
-  status: DeviceStatus;
-  compact?: boolean;
-}) {
-  return <span className={`status-pill ${status} ${compact ? "compact" : ""}`}>{status}</span>;
-}
 
-function formatTime(value: string): string {
-  const date = new Date(value);
-  return date.toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  });
-}
 
 function describeCommand(command: DeviceInputCommand): string {
   switch (command.action) {
@@ -827,13 +657,6 @@ function describeCommand(command: DeviceInputCommand): string {
   }
 }
 
-function getDeviceKey(device?: Pick<DeviceInfo, "agentId" | "serial">): string {
-  if (!device) {
-    return "";
-  }
-
-  return `${device.agentId ?? "local"}::${device.serial}`;
-}
 
 function buildStreamUrl(device: DeviceInfo): string {
   if (!USE_RELAY) {
