@@ -6,7 +6,12 @@ import { ConsoleView } from "./ConsoleView";
 import { LoginView, createLocalUser } from "./LoginView";
 import { USE_RELAY, fetchMe, logout } from "./api/client";
 import { clearSession, loadSession, saveSession, type SessionUser, type StoredSession } from "./api/session";
+import { ThemePicker } from "./themes/ThemePicker";
 import "./styles.css";
+// 主题覆盖层与五套变量必须在 styles.css **之后**加载：它们靠 [data-theme] 前缀
+// 提高特异性压过基础样式，顺序反了就会被基础样式盖回去
+import "./themes/palette.css";
+import "./themes/themes.css";
 
 type View = "console" | "automation" | "admin";
 
@@ -200,6 +205,8 @@ export function App() {
 
         {USE_RELAY ? (
           <div className="top-bar-actions">
+            {/* 只在预览模式下出现（?theme= 或 ?preview=1），正常用户看不到 */}
+            <ThemePicker />
             <button type="button" className="top-bar-action neutral" onClick={() => setSettingsOpen(true)}>
               账号设置
             </button>
@@ -208,7 +215,10 @@ export function App() {
             </button>
           </div>
         ) : (
-          <span className="top-bar-note">本地直连模式</span>
+          <div className="top-bar-actions">
+            <ThemePicker />
+            <span className="top-bar-note">本地直连模式</span>
+          </div>
         )}
       </div>
 

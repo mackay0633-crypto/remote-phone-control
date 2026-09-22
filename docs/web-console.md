@@ -163,6 +163,61 @@ npm run build --workspace web      # 产物在 web/dist/
 
 **不需要任何构建时变量**，产物本身就是通用的。
 
+## 视觉风格（5 套，可切换）
+
+界面有 5 套视觉风格，同一份代码、同一套布局，只是配色 / 圆角 / 阴影 /
+**密度**不同。
+
+| id | 名称 | 定位 |
+|---|---|---|
+| `neon` | 深色霓虹 | **默认**。玻璃拟态，最像"产品" |
+| `light` | 极简浅色 | 白底细边框、几乎无阴影，适合长时间盯表格 |
+| `terminal` | 终端绿 | 纯黑 + 全等宽 + 直角，运维味 |
+| `corporate` | 企业蓝 | 浅灰蓝、间距最紧、卡片最小 → **一屏放最多设备** |
+| `warm` | 暖色柔和 | 深色暖棕 + 琥珀，圆角最大最松，久看不累 |
+
+### 怎么预览
+
+```bash
+node scripts/dev-web-test.mjs        # 起前端（8090）
+```
+
+| 目的 | 地址 |
+|---|---|
+| **五套并排对比** | http://127.0.0.1:8090/preview.html |
+| 单看一套 | http://127.0.0.1:8090/?theme=light |
+| 带切换器 | http://127.0.0.1:8090/?preview=1 |
+
+`preview.html` 里是**五个真实的 iframe**（不是截图），每一格都能点、能切页签；
+点"全屏打开"可以看到完整页面。右上角的「🎨 风格」切换器**只在带 `?theme=` 或
+`?preview=1` 时出现** —— 普通用户不该看到换肤开关。
+
+选择会存进 `localStorage`（`rpc.ui.theme`）。地址栏的 `?theme=` **优先于**
+localStorage：否则预览页里五个 iframe 会同时显示同一个风格。
+
+### 换默认风格
+
+改 `web/src/themes/theme.ts` 里的 `DEFAULT_THEME` 一行即可，其余四套仍然可用。
+
+### 加一套新风格
+
+不需要复制样式表。规则只在 `web/src/themes/palette.css` 里写一遍，
+风格只提供变量：
+
+1. 在 `themes.css` 里加一个 `:root[data-theme="新id"] { --accent: …; … }`，
+   照抄 `neon` 那一块，改值即可（**别漏**密度那 10 个变量，
+   漏了会回退成基础样式，看起来像"没生效"）
+2. 在 `theme.ts` 的 `THEMES` 里加一行（id / 名称 / 说明）
+3. 在 `public/preview.html` 的 `THEMES` 里加一行（预览页用它渲染）
+
+> ⚠️ **两条顺序约束**，反了就会出怪问题：
+> - `palette.css` / `themes.css` 必须在 `styles.css` **之后**加载
+>   （它们靠 `[data-theme]` 前缀提高特异性压过基础样式）
+> - `initTheme()` 必须在 React 渲染**之前**调用，否则会先按默认色画一帧再变色
+
+**测试**：`node .tmp-test/check-theme-vars.mjs` 这类校验脚本能查出"某套漏了
+变量"。更可靠的是直接看 —— 五宫格截图一眼就能发现某格没生效。
+
 ### 改 UI 时先截图，别靠"感觉好点了"
 
 改 CSS 最容易犯的两个错：「以为好看了其实更糟」和「改了某个元素把它挤出视口」。
@@ -180,6 +235,21 @@ node scripts/dev-screenshot.mjs --out .tmp-test/after.png
 它自己会登录（默认 `admin` / `DevTest123456`）、把 token 写进 localStorage，
 再用 `--view automation|admin` 切页签，最后整页截图。浏览器用临时 profile，
 不碰你日常那个。
+
+三个额外开关，够应付大部分 UI 验证：
+
+```bash
+--click "发视频"        # 按文字点按钮（切子标签页）
+--eval "<js>"           # 截图前跑一段页面 JS（验证交互，比如点置灰项看提示）
+--no-auth               # 静态页/探针页没有账号系统，跳过登录
+--url 可带路径          # 如 http://127.0.0.1:8090/preview.html
+```
+
+> ⚠️ **别用 PowerShell 的 `Set-Content` 改这个仓库里带中文的文件。**
+> PS 5.1 的 `Set-Content` 默认按 **ANSI(GBK)** 写盘，会把中文写成乱码，
+> 文件直接变成非法 UTF-8（`node` 和编辑工具都读不了）。已经踩过一次，
+> 只能 `git checkout` 回滚重做。改文件用编辑工具，或
+> `[System.IO.File]::WriteAllText($p, $text, [System.Text.UTF8Encoding]::new($false))`。
 
 > ⚠️ **注意地址用 `127.0.0.1` 时前端会走"本地直连模式"**（见 `api/client.ts`
 > 的来源判断），自动化页会显示"仅在部署环境下可用"，而且控制台读的是本机

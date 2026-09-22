@@ -51,7 +51,12 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 
-const URL_BASE = String(args.url ?? "http://127.0.0.1:8090").replace(/\/+$/, "");
+// --url 可以带路径（如 /preview.html）。**必须把 origin 和页面地址分开**：
+// 早期版本直接往 --url 后面拼 /api/auth/login，于是带路径时请求会变成
+// ".../preview.html/api/auth/login"，拿到的是 HTML 而不是 JSON。
+const TARGET = new URL(String(args.url ?? "http://127.0.0.1:8090"));
+const ORIGIN = TARGET.origin;
+const PAGE_URL = TARGET.toString();
 const OUT = resolve(String(args.out ?? ".tmp-test/screenshot.png"));
 const VIEW = String(args.view ?? "console");
 const WIDTH = Number(args.width ?? 1600);
@@ -157,7 +162,7 @@ async function main() {
   let session = null;
 
   if (!NO_AUTH) {
-    const loginRes = await fetch(`${URL_BASE}/api/auth/login`, {
+    const loginRes = await fetch(`${ORIGIN}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: USERNAME, password: PASSWORD })
@@ -231,7 +236,7 @@ async function main() {
     });
 
     // 3) 先打开同源页面（localStorage 是按源隔离的，必须先到那个源）
-    await cdp.send("Page.navigate", { url: URL_BASE });
+    await cdp.send("Page.navigate", { url: PAGE_URL });
     await cdp.waitForEvent("Page.loadEventFired");
 
     if (session) {
@@ -242,7 +247,7 @@ async function main() {
       `);
 
       // 4) 重新加载，让应用带着会话启动
-      await cdp.send("Page.navigate", { url: URL_BASE });
+      await cdp.send("Page.navigate", { url: PAGE_URL });
       await cdp.waitForEvent("Page.loadEventFired");
     }
 

@@ -1,0 +1,470 @@
+/**
+ * 五套视觉风格的变量定义。
+ *
+ * 规则只写在 `palette.css` 里一次，这里只提供变量 —— 所以**加一套风格就是
+ * 加一个二十来行的块**，不用复制样式表。
+ *
+ * ── 怎么预览 ────────────────────────────────────────────────
+ *
+ *   单看某套：      http://127.0.0.1:8090/?theme=light
+ *   五套并排对比：  http://127.0.0.1:8090/preview.html
+ *
+ * 选择会存进 localStorage（`rpc.ui.theme`），下次打开还是它。
+ *
+ * ── 五套的定位（差异要够大才有得选）────────────────────────
+ *
+ *   neon       深色冷蓝 + 玻璃拟态。信息密度中等，是最"产品化"的一套
+ *   light      极简浅色。白底、细边框、几乎无阴影，适合长时间盯表格
+ *   terminal   纯黑 + 等宽 + 荧光绿。像终端，一眼专业，但偏工程师口味
+ *   corporate  浅灰蓝 + 高密度 + 深蓝主色。间距最紧，一屏塞最多设备
+ *   warm       深色暖棕 + 琥珀。圆角最大、最柔和，长时间看不累
+ */
+
+/* ────────────────────────── 1. neon ──────────────────────────
+ * 与改造前完全一致（默认值），所以这次改动不会改变线上观感。
+ */
+:root,
+:root[data-theme="neon"] {
+  --color-scheme: dark;
+
+  --bg:
+    radial-gradient(circle at top left, rgba(82, 180, 255, 0.18), transparent 26%),
+    radial-gradient(circle at 82% 18%, rgba(62, 255, 210, 0.12), transparent 24%),
+    linear-gradient(180deg, #050816 0%, #09111f 52%, #05070f 100%);
+
+  --text: #edf6ff;
+  --text-strong: #ffffff;
+  --text-dim: #b8c8e4;
+  --text-muted: #8ea4c8;
+  --text-label: #8ca5c9;
+
+  --surface: linear-gradient(180deg, rgba(12, 19, 34, 0.88), rgba(7, 11, 22, 0.92));
+  --surface-solid: rgba(14, 21, 36, 0.75);
+  --surface-card: linear-gradient(180deg, rgba(18, 27, 44, 0.94), rgba(10, 15, 27, 0.94));
+  --surface-sunken: rgba(255, 255, 255, 0.03);
+  --input-bg: rgba(4, 8, 18, 0.72);
+
+  --border: rgba(167, 201, 255, 0.14);
+  --border-faint: rgba(143, 176, 226, 0.12);
+  --border-strong: rgba(167, 201, 255, 0.18);
+
+  --accent: #52b4ff;
+  --accent-hover: #74c6ff;
+  --accent-soft: rgba(82, 180, 255, 0.16);
+  --accent-border: rgba(82, 180, 255, 0.5);
+  --accent-on: #04121f;
+  --accent-text-strong: #cfe8ff;
+  --accent-gradient: linear-gradient(90deg, rgba(82, 180, 255, 0.9), rgba(160, 120, 255, 0.9));
+
+  --success: #6ef0b8;
+  --success-soft: rgba(110, 240, 184, 0.14);
+  --success-border: rgba(110, 240, 184, 0.4);
+  --danger: #ff9a9a;
+  --danger-soft: rgba(255, 118, 118, 0.14);
+  --danger-border: rgba(255, 118, 118, 0.4);
+  --warn: #ffcf72;
+  --warn-soft: rgba(255, 196, 92, 0.12);
+  --warn-border: rgba(255, 196, 92, 0.32);
+  --toast-bg: rgba(28, 22, 8, 0.94);
+
+  --button-bg: rgba(255, 255, 255, 0.05);
+  --chip-bg: rgba(255, 255, 255, 0.04);
+
+  --ambient-a: rgba(0, 187, 255, 0.14);
+  --ambient-b: rgba(0, 255, 170, 0.1);
+  --ambient-opacity: 0.55;
+  --ambient-blur: 64px;
+  --screen-glow: radial-gradient(circle at 50% 0%, rgba(82, 180, 255, 0.18), transparent 62%);
+
+  --radius-panel: 28px;
+  --radius-card: 18px;
+  --radius-control: 12px;
+  --radius-chip: 999px;
+
+  --shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow-accent: inset 0 0 0 1px rgba(84, 201, 255, 0.08);
+  --shadow-card-hover: 0 18px 30px rgba(0, 0, 0, 0.24);
+  --shadow-card-selected: 0 18px 34px rgba(0, 0, 0, 0.26), inset 0 0 0 1px rgba(95, 234, 255, 0.2);
+  --shadow-inset: inset 0 0 40px rgba(0, 0, 0, 0.5);
+  --shadow-tab-active: none;
+  --panel-blur: blur(18px);
+
+  --font-body: "Aptos", "Segoe UI", sans-serif;
+  --font-display: "Aptos Display", "Segoe UI Variable Display", "Trebuchet MS", sans-serif;
+  --font-label: var(--font-body);
+  --font-mono-display: "Cascadia Mono", "Consolas", monospace;
+  --display-weight: 700;
+  --display-spacing: -0.04em;
+  --eyebrow-spacing: 0.18em;
+  --eyebrow-transform: uppercase;
+
+  /* 密度：这一套是基准，其余四套相对它增减 */
+  --space-shell: 40px;
+  --space-panel: 24px;
+  --space-card: 14px;
+  --space-meta: 10px 12px;
+  --gap-panel: 24px;
+  --gap-card: 12px;
+  --gap-form: 14px;
+  --grid-min: 180px;
+  --font-hero: clamp(32px, 3.4vw, 52px);
+  --font-card-title: 17px;
+}
+
+/* ────────────────────────── 2. light ──────────────────────────
+ * 白底极简。去掉一切发光与模糊，只留细边框和极浅的投影 ——
+ * 目标是"看一天表格不累"。
+ */
+:root[data-theme="light"] {
+  --color-scheme: light;
+
+  --bg: linear-gradient(180deg, #f6f8fc 0%, #eef2f9 100%);
+
+  --text: #1d2433;
+  --text-strong: #0d1220;
+  --text-dim: #4a5568;
+  --text-muted: #7b8798;
+  --text-label: #64748b;
+
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-card: #ffffff;
+  --surface-sunken: #f7f9fc;
+  --input-bg: #ffffff;
+
+  --border: #e3e8f0;
+  --border-faint: #edf1f7;
+  --border-strong: #d5dced;
+
+  --accent: #3b6cf6;
+  --accent-hover: #2f5ce0;
+  --accent-soft: rgba(59, 108, 246, 0.1);
+  --accent-border: rgba(59, 108, 246, 0.45);
+  --accent-on: #ffffff;
+  --accent-text-strong: #2f5ce0;
+  --accent-gradient: linear-gradient(90deg, #3b6cf6, #7a5cf0);
+
+  --success: #128a5a;
+  --success-soft: rgba(18, 138, 90, 0.1);
+  --success-border: rgba(18, 138, 90, 0.32);
+  --danger: #c0392b;
+  --danger-soft: rgba(192, 57, 43, 0.08);
+  --danger-border: rgba(192, 57, 43, 0.3);
+  --warn: #9a6a00;
+  --warn-soft: rgba(240, 173, 78, 0.14);
+  --warn-border: rgba(214, 158, 46, 0.45);
+  --toast-bg: #fff8e6;
+
+  --button-bg: #ffffff;
+  --chip-bg: #f2f5fa;
+
+  --ambient-a: rgba(59, 108, 246, 0.05);
+  --ambient-b: rgba(122, 92, 240, 0.04);
+  --ambient-opacity: 0.5;
+  --ambient-blur: 80px;
+  --screen-glow: radial-gradient(circle at 50% 0%, rgba(59, 108, 246, 0.08), transparent 60%);
+
+  --radius-panel: 16px;
+  --radius-card: 12px;
+  --radius-control: 9px;
+  --radius-chip: 999px;
+
+  --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+  --shadow-accent: none;
+  --shadow-card-hover: 0 4px 14px rgba(16, 24, 40, 0.1);
+  --shadow-card-selected: 0 0 0 2px rgba(59, 108, 246, 0.35);
+  --shadow-inset: inset 0 0 24px rgba(16, 24, 40, 0.05);
+  --shadow-tab-active: 0 1px 3px rgba(16, 24, 40, 0.12);
+  --panel-blur: none;
+
+  --font-body: "Aptos", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Aptos Display", "Segoe UI Variable Display", system-ui, sans-serif;
+  --font-label: var(--font-body);
+  --font-mono-display: "Cascadia Mono", "Consolas", monospace;
+  --display-weight: 650;
+  --display-spacing: -0.02em;
+  --eyebrow-spacing: 0.1em;
+  --eyebrow-transform: none;
+
+  /* 比基准松一点：浅色界面里元素靠边框区分，挤在一起会更累 */
+  --space-shell: 36px;
+  --space-panel: 26px;
+  --space-card: 16px;
+  --space-meta: 12px 14px;
+  --gap-panel: 22px;
+  --gap-card: 14px;
+  --gap-form: 16px;
+  --grid-min: 190px;
+  --font-hero: clamp(30px, 3vw, 46px);
+  --font-card-title: 17px;
+}
+
+/* ────────────────────────── 3. terminal ──────────────────────────
+ * 纯黑 + 全等宽 + 荧光绿，直角。刻意做得像终端 ——
+ * 对"一眼看出这是运维工具"这件事很有效，但客户可能觉得冷。
+ */
+:root[data-theme="terminal"] {
+  --color-scheme: dark;
+
+  --bg:
+    repeating-linear-gradient(0deg, rgba(0, 255, 140, 0.02) 0 1px, transparent 1px 3px),
+    #04070a;
+
+  --text: #b8f5cf;
+  --text-strong: #d8ffe8;
+  --text-dim: #7fd9a4;
+  --text-muted: #5a9a78;
+  --text-label: #4f8f6d;
+
+  --surface: rgba(6, 14, 11, 0.92);
+  --surface-solid: rgba(6, 14, 11, 0.8);
+  --surface-card: rgba(8, 18, 14, 0.92);
+  --surface-sunken: rgba(0, 255, 140, 0.03);
+  --input-bg: rgba(2, 8, 5, 0.9);
+
+  --border: rgba(0, 255, 140, 0.22);
+  --border-faint: rgba(0, 255, 140, 0.12);
+  --border-strong: rgba(0, 255, 140, 0.3);
+
+  --accent: #00e676;
+  --accent-hover: #39ff96;
+  --accent-soft: rgba(0, 230, 118, 0.12);
+  --accent-border: rgba(0, 230, 118, 0.55);
+  --accent-on: #032313;
+  --accent-text-strong: #7dffb8;
+  --accent-gradient: linear-gradient(90deg, #00e676, #00b0a0);
+
+  --success: #00e676;
+  --success-soft: rgba(0, 230, 118, 0.12);
+  --success-border: rgba(0, 230, 118, 0.45);
+  --danger: #ff5f6d;
+  --danger-soft: rgba(255, 95, 109, 0.12);
+  --danger-border: rgba(255, 95, 109, 0.45);
+  --warn: #ffd166;
+  --warn-soft: rgba(255, 209, 102, 0.12);
+  --warn-border: rgba(255, 209, 102, 0.4);
+  --toast-bg: rgba(20, 16, 4, 0.96);
+
+  --button-bg: rgba(0, 255, 140, 0.05);
+  --chip-bg: rgba(0, 255, 140, 0.06);
+
+  --ambient-a: rgba(0, 230, 118, 0.06);
+  --ambient-b: rgba(0, 180, 160, 0.05);
+  --ambient-opacity: 0.35;
+  --ambient-blur: 90px;
+  --screen-glow: radial-gradient(circle at 50% 0%, rgba(0, 230, 118, 0.12), transparent 60%);
+
+  --radius-panel: 2px;
+  --radius-card: 2px;
+  --radius-control: 2px;
+  --radius-chip: 2px;
+
+  --shadow-panel: none;
+  --shadow-accent: none;
+  --shadow-card-hover: 0 0 0 1px rgba(0, 230, 118, 0.4);
+  --shadow-card-selected: 0 0 0 1px #00e676, 0 0 18px rgba(0, 230, 118, 0.25);
+  --shadow-inset: inset 0 0 30px rgba(0, 255, 140, 0.06);
+  --shadow-tab-active: none;
+  --panel-blur: none;
+
+  --font-body: "Cascadia Mono", "Consolas", "Courier New", monospace;
+  --font-display: var(--font-body);
+  --font-label: var(--font-body);
+  --font-mono-display: var(--font-body);
+  --display-weight: 700;
+  --display-spacing: 0em;
+  --eyebrow-spacing: 0.22em;
+  --eyebrow-transform: uppercase;
+
+  /* 终端风格就该挤：信息密集、留白少 */
+  --space-shell: 24px;
+  --space-panel: 16px;
+  --space-card: 10px;
+  --space-meta: 8px 10px;
+  --gap-panel: 14px;
+  --gap-card: 8px;
+  --gap-form: 10px;
+  --grid-min: 165px;
+  --font-hero: clamp(24px, 2.4vw, 34px);
+  --font-card-title: 14px;
+}
+
+/* ────────────────────────── 4. corporate ──────────────────────────
+ * 浅灰蓝 + 深蓝主色 + 最小圆角 + 最紧间距。
+ * 五套里"一屏能放最多设备"的一套，适合真在管机器的人。
+ */
+:root[data-theme="corporate"] {
+  --color-scheme: light;
+
+  --bg: #eef1f6;
+
+  --text: #1f2937;
+  --text-strong: #111827;
+  --text-dim: #374151;
+  --text-muted: #6b7280;
+  --text-label: #556070;
+
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-card: #fbfcfe;
+  --surface-sunken: #f4f6fa;
+  --input-bg: #ffffff;
+
+  --border: #d7dde7;
+  --border-faint: #e5e9f0;
+  --border-strong: #c3cbd9;
+
+  --accent: #1a4fa0;
+  --accent-hover: #16407f;
+  --accent-soft: rgba(26, 79, 160, 0.08);
+  --accent-border: rgba(26, 79, 160, 0.4);
+  --accent-on: #ffffff;
+  --accent-text-strong: #1a4fa0;
+  --accent-gradient: linear-gradient(90deg, #1a4fa0, #2f6fc4);
+
+  --success: #0f7a4a;
+  --success-soft: rgba(15, 122, 74, 0.08);
+  --success-border: rgba(15, 122, 74, 0.3);
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.07);
+  --danger-border: rgba(180, 35, 24, 0.28);
+  --warn: #8a5a00;
+  --warn-soft: rgba(217, 160, 40, 0.12);
+  --warn-border: rgba(191, 140, 30, 0.4);
+  --toast-bg: #fff6e0;
+
+  --button-bg: #ffffff;
+  --chip-bg: #eef2f8;
+
+  --ambient-a: transparent;
+  --ambient-b: transparent;
+  --ambient-opacity: 0;
+  --ambient-blur: 0px;
+  --screen-glow: none;
+
+  --radius-panel: 6px;
+  --radius-card: 5px;
+  --radius-control: 4px;
+  --radius-chip: 4px;
+
+  --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-accent: none;
+  --shadow-card-hover: 0 1px 4px rgba(16, 24, 40, 0.1);
+  --shadow-card-selected: 0 0 0 2px rgba(26, 79, 160, 0.3);
+  --shadow-inset: inset 0 0 18px rgba(16, 24, 40, 0.05);
+  --shadow-tab-active: 0 1px 2px rgba(16, 24, 40, 0.1);
+  --panel-blur: none;
+
+  --font-body: "Segoe UI", "Aptos", system-ui, sans-serif;
+  --font-display: "Segoe UI Semibold", "Segoe UI", system-ui, sans-serif;
+  --font-label: var(--font-body);
+  --font-mono-display: "Cascadia Mono", "Consolas", monospace;
+  --display-weight: 600;
+  --display-spacing: -0.01em;
+  --eyebrow-spacing: 0.06em;
+  --eyebrow-transform: uppercase;
+
+  /* 五套里最紧的一套：卡片最小、间距最小 → 一屏能看到的设备最多。
+     这是它存在的理由，不只是配色不同。 */
+  --space-shell: 20px;
+  --space-panel: 16px;
+  --space-card: 10px;
+  --space-meta: 8px 10px;
+  --gap-panel: 14px;
+  --gap-card: 8px;
+  --gap-form: 10px;
+  --grid-min: 148px;
+  --font-hero: clamp(24px, 2.2vw, 32px);
+  --font-card-title: 14px;
+}
+
+/* ────────────────────────── 5. warm ──────────────────────────
+ * 深色暖棕 + 琥珀 + 大圆角。唯一一套"暖色深色"，
+ * 长时间盯屏幕比冷蓝舒服，代价是少一点科技感。
+ */
+:root[data-theme="warm"] {
+  --color-scheme: dark;
+
+  --bg:
+    radial-gradient(circle at 12% 0%, rgba(240, 160, 75, 0.16), transparent 30%),
+    radial-gradient(circle at 88% 12%, rgba(214, 122, 90, 0.12), transparent 26%),
+    linear-gradient(180deg, #1a1210 0%, #211814 55%, #150f0d 100%);
+
+  --text: #f6e9dd;
+  --text-strong: #fff6ec;
+  --text-dim: #d8c3b2;
+  --text-muted: #a98f7c;
+  --text-label: #b59a86;
+
+  --surface: linear-gradient(180deg, rgba(40, 28, 23, 0.9), rgba(26, 18, 15, 0.94));
+  --surface-solid: rgba(44, 31, 25, 0.78);
+  --surface-card: linear-gradient(180deg, rgba(52, 36, 29, 0.94), rgba(32, 22, 18, 0.94));
+  --surface-sunken: rgba(255, 214, 170, 0.04);
+  --input-bg: rgba(24, 16, 13, 0.8);
+
+  --border: rgba(240, 190, 140, 0.16);
+  --border-faint: rgba(240, 190, 140, 0.1);
+  --border-strong: rgba(240, 190, 140, 0.22);
+
+  --accent: #f0a04b;
+  --accent-hover: #ffb867;
+  --accent-soft: rgba(240, 160, 75, 0.14);
+  --accent-border: rgba(240, 160, 75, 0.5);
+  --accent-on: #2a1808;
+  --accent-text-strong: #ffd7a8;
+  --accent-gradient: linear-gradient(90deg, rgba(240, 160, 75, 0.9), rgba(214, 122, 90, 0.9));
+
+  --success: #8fd694;
+  --success-soft: rgba(143, 214, 148, 0.14);
+  --success-border: rgba(143, 214, 148, 0.4);
+  --danger: #ff9b8a;
+  --danger-soft: rgba(255, 155, 138, 0.14);
+  --danger-border: rgba(255, 155, 138, 0.4);
+  --warn: #ffcf72;
+  --warn-soft: rgba(255, 196, 92, 0.14);
+  --warn-border: rgba(255, 196, 92, 0.36);
+  --toast-bg: rgba(38, 26, 12, 0.95);
+
+  --button-bg: rgba(255, 214, 170, 0.06);
+  --chip-bg: rgba(255, 214, 170, 0.06);
+
+  --ambient-a: rgba(240, 160, 75, 0.12);
+  --ambient-b: rgba(214, 122, 90, 0.1);
+  --ambient-opacity: 0.45;
+  --ambient-blur: 70px;
+  --screen-glow: radial-gradient(circle at 50% 0%, rgba(240, 160, 75, 0.16), transparent 62%);
+
+  --radius-panel: 26px;
+  --radius-card: 20px;
+  --radius-control: 14px;
+  --radius-chip: 999px;
+
+  --shadow-panel: 0 26px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 226, 190, 0.06);
+  --shadow-accent: inset 0 0 0 1px rgba(240, 160, 75, 0.12);
+  --shadow-card-hover: 0 18px 34px rgba(0, 0, 0, 0.3);
+  --shadow-card-selected: 0 18px 34px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(240, 160, 75, 0.28);
+  --shadow-inset: inset 0 0 40px rgba(0, 0, 0, 0.45);
+  --shadow-tab-active: none;
+  --panel-blur: blur(16px);
+
+  --font-body: "Aptos", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Aptos Display", "Segoe UI Variable Display", "Trebuchet MS", sans-serif;
+  --font-label: var(--font-body);
+  --font-mono-display: "Cascadia Mono", "Consolas", monospace;
+  --display-weight: 680;
+  --display-spacing: -0.03em;
+  --eyebrow-spacing: 0.14em;
+  --eyebrow-transform: uppercase;
+
+  /* 最松的一套：大圆角大留白，和"柔和"这个定位一致 */
+  --space-shell: 44px;
+  --space-panel: 28px;
+  --space-card: 16px;
+  --space-meta: 12px 14px;
+  --gap-panel: 28px;
+  --gap-card: 16px;
+  --gap-form: 18px;
+  --grid-min: 196px;
+  --font-hero: clamp(30px, 3.2vw, 48px);
+  --font-card-title: 17px;
+}

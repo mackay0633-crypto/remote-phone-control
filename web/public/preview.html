@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>外贸易 · 风格预览（5 套）</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Aptos", "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 28px;
+      background: linear-gradient(180deg, #050816, #0a1020);
+      color: #e8f1ff;
+    }
+    header { margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -0.02em; }
+    p { margin: 0; color: #93a8c9; font-size: 13px; line-height: 1.7; }
+    code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.07);
+      color: #9fd0ff;
+      font-family: "Cascadia Mono", Consolas, monospace;
+    }
+    .hint { margin-top: 12px; font-size: 12px; color: #7b90b3; }
+
+    /* 五宫格：2 列 × 3 行。每格里的 iframe 按桌面宽度 1440 渲染再缩放，
+       这样看到的是**真实桌面布局**，而不是被挤成手机版。
+       缩放用 transform 而不是缩小 viewport —— 后者会让断点生效，看到的就不是
+       桌面排版了（这个区别很关键，第一版就是缩 viewport，结果五格全是窄屏版）。 */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+    .cell {
+      border: 1px solid rgba(167, 201, 255, 0.16);
+      border-radius: 16px;
+      background: rgba(9, 14, 26, 0.75);
+      overflow: hidden;
+    }
+    .cell-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(167, 201, 255, 0.12);
+    }
+    .cell-title { font-size: 14px; font-weight: 600; }
+    .cell-hint { font-size: 11px; color: #8ea4c8; }
+    .cell-link {
+      color: #7cc4ff;
+      font-size: 11px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .cell-link:hover { text-decoration: underline; }
+
+    .frame-box {
+      position: relative;
+      height: 420px;
+      overflow: hidden;
+      background: #000;
+    }
+    .frame-box iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1440px;
+      height: 900px;
+      border: 0;
+      transform-origin: top left;
+      /* 420 / 900 ≈ 0.4667；宽度方向 1440×0.4667 ≈ 672，格宽约 700 刚好放下 */
+      transform: scale(0.4667);
+    }
+
+    @media (max-width: 1200px) {
+      .grid { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>外贸易 · 风格预览</h1>
+    <p>
+      下面是**同一份前端**用五种不同配色渲染的效果。每一格都是真实运行的页面（可以点、可以切页签），
+      不是截图。
+    </p>
+    <p class="hint">
+      单看某一套：<code>?theme=neon</code> / <code>?theme=light</code> / <code>?theme=terminal</code> /
+      <code>?theme=corporate</code> / <code>?theme=warm</code>　·　
+      右上角「🎨 风格」可现场切换　·　选择会记住（<code>localStorage</code>）
+    </p>
+  </header>
+
+  <div class="grid" id="grid"></div>
+
+  <script>
+    // 这五套的 id/名称/说明与 web/src/themes/theme.ts 里的 THEMES 保持一致
+    const THEMES = [
+      { id: "neon", label: "1 · 深色霓虹（当前）", hint: "玻璃拟态，最像产品" },
+      { id: "light", label: "2 · 极简浅色", hint: "白底细边框，看表格不累" },
+      { id: "terminal", label: "3 · 终端绿", hint: "纯黑等宽直角，运维味" },
+      { id: "corporate", label: "4 · 企业蓝", hint: "浅色高密度，一屏最多设备" },
+      { id: "warm", label: "5 · 暖色柔和", hint: "深色暖棕大圆角，久看不累" }
+    ];
+
+    // 每个 iframe 都带 ?preview=1，这样右上角会出现切换器，方便在格子里直接换风格对比
+    const params = new URLSearchParams(location.search);
+    const suffix = params.get("page") ? `&page=${encodeURIComponent(params.get("page"))}` : "";
+
+    document.getElementById("grid").innerHTML = THEMES.map(
+      (theme) => `
+        <section class="cell">
+          <div class="cell-head">
+            <div>
+              <div class="cell-title">${theme.label}</div>
+              <div class="cell-hint">${theme.hint}</div>
+            </div>
+            <a class="cell-link" href="/?theme=${theme.id}&preview=1${suffix}" target="_blank" rel="noreferrer">全屏打开 ↗</a>
+          </div>
+          <div class="frame-box">
+            <iframe src="/?theme=${theme.id}&preview=1${suffix}" loading="lazy" title="${theme.label}"></iframe>
+          </div>
+        </section>
+      `
+    ).join("");
+  </script>
+</body>
+</html>

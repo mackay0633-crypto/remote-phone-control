@@ -1,0 +1,589 @@
+/**
+ * 主题覆盖层（palette）。
+ *
+ * ── 为什么要有这一层 ──────────────────────────────────────────
+ *
+ * 原来的 `styles.css` 把颜色/圆角/阴影**写死在每条规则里**（`rgba(167,201,255,.14)`
+ * 这类），所以要换一套视觉风格就得改几百处 —— 实际上没法换。
+ *
+ * 这里把「可变的那些属性」统一重写成 CSS 变量。规则只写一遍，主题只提供变量
+ * （见 `themes.css`），于是加一套风格 = 加二十来行变量，而不是复制一份样式表。
+ *
+ * ── 两个实现要点 ─────────────────────────────────────────────
+ *
+ * 1. **每条规则都带 `[data-theme]` 前缀**。基础样式里的 `.hero` 是 (0,1,0)，
+ *    而 `[data-theme] .hero` 是 (0,2,0) —— 靠特异性稳定压过基础样式，
+ *    不需要 `!important`（用 `!important` 会让以后想微调单处变得很难）。
+ * 2. **`themes.css` 必须在 `styles.css` 之后加载**，且 `data-theme` 要在首屏
+ *    渲染前挂到 `<html>` 上，否则会看到一次颜色闪烁。
+ */
+
+/* ── 页面骨架 ────────────────────────────────────────────── */
+
+[data-theme] {
+  color-scheme: var(--color-scheme);
+  background: var(--bg);
+  color: var(--text);
+}
+
+[data-theme] body {
+  background: var(--bg);
+}
+
+[data-theme] .app-shell {
+  background: var(--bg);
+}
+
+[data-theme] .ambient {
+  opacity: var(--ambient-opacity);
+  filter: blur(var(--ambient-blur));
+}
+
+[data-theme] .ambient-a {
+  background: var(--ambient-a);
+}
+
+[data-theme] .ambient-b {
+  background: var(--ambient-b);
+}
+
+/* ── 面板 ───────────────────────────────────────────────── */
+
+[data-theme] .hero,
+[data-theme] .focus-panel,
+[data-theme] .device-wall,
+[data-theme] .admin-panel,
+[data-theme] .auth-card,
+[data-theme] .admin-user-card,
+[data-theme] .admin-banner,
+[data-theme] .admin-device-row,
+[data-theme] .video-row,
+[data-theme] .video-assign-row,
+[data-theme] .locked-block,
+[data-theme] .admin-table-row {
+  border-color: var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+[data-theme] .hero,
+[data-theme] .focus-panel,
+[data-theme] .device-wall,
+[data-theme] .admin-panel,
+[data-theme] .auth-card {
+  backdrop-filter: var(--panel-blur);
+}
+
+/* 小卡片用更小的圆角，大面板用大圆角 —— 否则同一个圆角值在两种尺寸上
+   总有一种看着不对 */
+[data-theme] .metric-card,
+[data-theme] .device-card,
+[data-theme] .meta-item,
+[data-theme] .control-status,
+[data-theme] .admin-user-card,
+[data-theme] .admin-table-row,
+[data-theme] .admin-device-row,
+[data-theme] .video-row,
+[data-theme] .video-assign-row {
+  border-radius: var(--radius-card);
+}
+
+[data-theme] .metric-card {
+  border-color: var(--border);
+  background: var(--surface-solid);
+}
+
+[data-theme] .metric-card.accent {
+  box-shadow: var(--shadow-accent);
+}
+
+[data-theme] .device-card {
+  border-color: var(--border);
+  background: var(--surface-card);
+}
+
+[data-theme] .device-card:hover {
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow-card-hover);
+}
+
+[data-theme] .device-card.selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-card-selected);
+}
+
+[data-theme] .meta-item,
+[data-theme] .control-status,
+[data-theme] .locked-block {
+  border-color: var(--border-faint);
+  background: var(--surface-sunken);
+}
+
+[data-theme] .screen-frame {
+  border-color: var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-inset);
+}
+
+[data-theme] .screen-glow {
+  background: var(--screen-glow);
+}
+
+/* ── 排版 ───────────────────────────────────────────────── */
+
+[data-theme] .hero-copy h1,
+[data-theme] .panel-header h2,
+[data-theme] .auth-brand h1 {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-spacing);
+  color: var(--text-strong);
+}
+
+[data-theme] .eyebrow,
+[data-theme] .panel-kicker,
+[data-theme] .metric-label,
+[data-theme] .meta-label,
+[data-theme] .admin-table-head,
+[data-theme] .control-status-label {
+  letter-spacing: var(--eyebrow-spacing);
+  text-transform: var(--eyebrow-transform);
+  color: var(--text-label);
+  font-family: var(--font-label);
+}
+
+[data-theme] .hero-copy p,
+[data-theme] .empty-panel p {
+  color: var(--text-dim);
+  font-family: var(--font-body);
+}
+
+[data-theme] .panel-note,
+[data-theme] .admin-hint,
+[data-theme] .admin-quota-hint,
+[data-theme] .admin-loading,
+[data-theme] .muted,
+[data-theme] .empty-panel p {
+  color: var(--text-muted);
+}
+
+[data-theme] .admin-quota-label,
+[data-theme] .auth-field span,
+[data-theme] .selection-subtitle {
+  color: var(--text-label);
+}
+
+[data-theme] .metric-value,
+[data-theme] .meta-value {
+  color: var(--text-strong);
+  font-family: var(--font-mono-display);
+}
+
+[data-theme] .device-model {
+  font-family: var(--font-display);
+  color: var(--text-strong);
+}
+
+[data-theme] .device-serial,
+[data-theme] .device-index,
+[data-theme] .admin-device-serial {
+  color: var(--text-muted);
+  font-family: var(--font-mono-display);
+}
+
+[data-theme] .device-details span {
+  background: var(--chip-bg);
+  color: var(--text-dim);
+  border-radius: var(--radius-chip);
+}
+
+[data-theme] .admin-section-title {
+  color: var(--text-strong);
+}
+
+/* ── 顶栏与控件 ─────────────────────────────────────────── */
+
+[data-theme] .top-bar {
+  border-color: var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+[data-theme] .top-bar-username,
+[data-theme] .top-bar-note {
+  color: var(--text-dim);
+}
+
+[data-theme] .top-bar-nav {
+  background: var(--surface-sunken);
+  border-color: var(--border-faint);
+  border-radius: var(--radius-control);
+}
+
+[data-theme] .top-bar-nav button {
+  color: var(--text-muted);
+  border-radius: var(--radius-control);
+}
+
+[data-theme] .top-bar-nav button.active {
+  background: var(--accent-soft);
+  color: var(--accent-text-strong);
+}
+
+[data-theme] .top-bar-action,
+[data-theme] .control-button,
+[data-theme] .auth-code-button,
+[data-theme] .admin-action {
+  border-color: var(--border-strong);
+  background: var(--button-bg);
+  color: var(--text-dim);
+  border-radius: var(--radius-control);
+}
+
+[data-theme] .top-bar-action:hover:not(:disabled),
+[data-theme] .control-button:hover:not(:disabled),
+[data-theme] .admin-action:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+[data-theme] .auth-submit {
+  border-color: var(--accent-border);
+  background: var(--accent);
+  color: var(--accent-on);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-accent);
+}
+
+[data-theme] .auth-submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+[data-theme] .admin-tabs {
+  border-color: var(--border-faint);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-control);
+}
+
+[data-theme] .admin-tabs button {
+  color: var(--text-muted);
+  border-radius: var(--radius-control);
+}
+
+[data-theme] .admin-tabs button.active {
+  background: var(--accent-soft);
+  color: var(--accent-text-strong);
+  box-shadow: var(--shadow-tab-active);
+}
+
+[data-theme] .admin-capability {
+  border-color: var(--border-faint);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-control);
+  color: var(--text-dim);
+}
+
+[data-theme] .admin-capability.on {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text-strong);
+}
+
+[data-theme] .status-pill,
+[data-theme] .role-badge,
+[data-theme] .selection-pill {
+  border-color: var(--border-strong);
+  background: var(--chip-bg);
+  color: var(--text-dim);
+  border-radius: var(--radius-chip);
+}
+
+[data-theme] .status-pill.online {
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+[data-theme] .status-pill.offline,
+[data-theme] .status-pill.unknown {
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
+[data-theme] .status-pill.unauthorized,
+[data-theme] .admin-banner.error,
+[data-theme] .auth-message.error {
+  border-color: var(--danger-border);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+[data-theme] .admin-banner.notice,
+[data-theme] .auth-message.notice {
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+[data-theme] .device-dot {
+  background: var(--text-muted);
+}
+
+[data-theme] .device-dot.online {
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-soft);
+}
+
+[data-theme] .device-dot.offline {
+  background: var(--danger);
+}
+
+/* ── 表单控件 ───────────────────────────────────────────── */
+
+[data-theme] input,
+[data-theme] select,
+[data-theme] textarea {
+  border-color: var(--border-strong);
+  background: var(--input-bg);
+  color: var(--text-strong);
+  border-radius: var(--radius-control);
+  font-family: var(--font-body);
+}
+
+[data-theme] .auth-field input,
+[data-theme] .admin-quota-field input,
+[data-theme] .video-field select,
+[data-theme] .video-textarea,
+[data-theme] .video-assign-row select,
+[data-theme] .admin-assign-target select {
+  border-color: var(--border-strong);
+  background: var(--input-bg);
+  color: var(--text-strong);
+  border-radius: var(--radius-control);
+}
+
+[data-theme] input:focus,
+[data-theme] select:focus,
+[data-theme] textarea:focus,
+[data-theme] .auth-field input:focus,
+[data-theme] .admin-quota-field input:focus,
+[data-theme] .video-field select:focus,
+[data-theme] .video-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+[data-theme] input::placeholder,
+[data-theme] textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── 表格 ───────────────────────────────────────────────── */
+
+[data-theme] .admin-table-head {
+  color: var(--text-label);
+}
+
+[data-theme] .admin-table-row,
+[data-theme] .admin-device-row {
+  border-color: var(--border-faint);
+  background: var(--surface-sunken);
+}
+
+[data-theme] .admin-user-card.selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-card-selected);
+}
+
+[data-theme] .admin-user-card.disabled {
+  opacity: 0.55;
+}
+
+[data-theme] .admin-user-name,
+[data-theme] .admin-block-title {
+  color: var(--text-strong);
+}
+
+[data-theme] .admin-user-meta,
+[data-theme] .admin-user-email {
+  color: var(--text-muted);
+}
+
+/* ── 素材库 / 进度条 ────────────────────────────────────── */
+
+[data-theme] .video-quota-bar {
+  background: var(--border-faint);
+}
+
+[data-theme] .video-quota-bar span {
+  background: var(--accent-gradient);
+}
+
+[data-theme] .admin-user-card,
+[data-theme] .empty-panel {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+[data-theme] .empty-icon {
+  color: var(--accent);
+}
+
+/* ── 试用版功能门（沿用同一套变量，风格才能跟着变）────────── */
+
+[data-theme] .locked-badge {
+  border-color: var(--warn-border);
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: var(--radius-chip);
+}
+
+[data-theme] .locked-toast {
+  border-color: var(--warn-border);
+  background: var(--toast-bg);
+  color: var(--warn);
+  border-radius: var(--radius-card);
+}
+
+[data-theme] .locked-toast-message {
+  color: var(--warn);
+}
+
+[data-theme] .locked-toast-target {
+  color: var(--text-muted);
+}
+
+/* ── 收尾：基础样式里剩下的硬编码前景色 ───────────────────────
+ *
+ * 这些是"按脚本列一遍 styles.css 里所有硬编码 color"找出来的漏网之鱼。
+ * 不补的话，在浅色主题下会变成浅色字压在浅色底上（比如控制状态那行
+ * 「点击屏幕、拖动滑动」原本是 #d6e4ff，在白底上几乎看不见）。
+ */
+
+[data-theme] .metric-hint,
+[data-theme] .screen-resolution,
+[data-theme] .auth-brand p,
+[data-theme] .auth-switch,
+[data-theme] .admin-assign-target,
+[data-theme] .locked-block-head {
+  color: var(--text-muted);
+}
+
+/* 控制状态：这条是实际截图里发现的对比度问题，不是猜的 */
+[data-theme] .control-status {
+  color: var(--text-dim);
+}
+
+[data-theme] .control-status.busy {
+  color: var(--accent-text-strong);
+}
+
+[data-theme] .auth-switch button {
+  color: var(--accent-text-strong);
+  background: none;
+}
+
+[data-theme] .role-badge.admin,
+[data-theme] .admin-hint.warn {
+  color: var(--warn);
+  border-color: var(--warn-border);
+  background: var(--warn-soft);
+}
+
+[data-theme] .role-badge.customer {
+  color: var(--accent-text-strong);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+[data-theme] .top-bar-action.primary {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text-strong);
+}
+
+[data-theme] .top-bar-action.primary:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+/* 危险操作（退出登录等）hover 才是红色，别让它一直红着 */
+[data-theme] .top-bar-action:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+[data-theme] .admin-assign-target select {
+  color: var(--text-strong);
+  background: var(--input-bg);
+  border-color: var(--border-strong);
+  border-radius: var(--radius-control);
+}
+
+[data-theme] .auth-field input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── 密度 ─────────────────────────────────────────────────
+ *
+ * 只换颜色的话五套只是"配色不同"，说不上一屏能多放设备。这里把间距、
+ * 面板内边距、设备卡片的最小宽度也变量化 —— 于是 `corporate` 是真的更紧凑，
+ * `warm` 是真的更松，而不只是看起来不同。
+ */
+
+[data-theme] .app-shell {
+  padding: var(--space-shell);
+}
+
+[data-theme] .hero {
+  padding: var(--space-panel);
+  gap: var(--gap-panel);
+}
+
+[data-theme] .focus-panel,
+[data-theme] .device-wall,
+[data-theme] .admin-panel {
+  padding: var(--space-panel);
+}
+
+[data-theme] .dashboard-grid,
+[data-theme] .admin-grid {
+  gap: var(--gap-panel);
+  margin-top: var(--gap-panel);
+}
+
+[data-theme] .metric-card {
+  padding: var(--space-card);
+}
+
+[data-theme] .device-grid {
+  grid-template-columns: repeat(auto-fit, minmax(var(--grid-min), 1fr));
+  gap: var(--gap-card);
+  margin-top: var(--gap-card);
+}
+
+[data-theme] .device-card {
+  padding: var(--space-card);
+}
+
+[data-theme] .admin-quota,
+[data-theme] .device-meta-grid {
+  gap: var(--gap-form);
+}
+
+[data-theme] .meta-item {
+  padding: var(--space-meta);
+}
+
+/* 紧凑主题下设备卡片里的元信息再收一点，否则卡片还是高 */
+[data-theme] .device-model {
+  margin-top: var(--gap-card);
+  font-size: var(--font-card-title);
+}
+
+[data-theme] .hero-copy h1 {
+  font-size: var(--font-hero);
+}

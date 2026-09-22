@@ -1565,3 +1565,90 @@ select {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
 }
+
+/* ────────────────────── 风格切换器（仅预览模式）──────────────────────
+ *
+ * 颜色全部走主题变量，所以切换器自己也会跟着换皮 ——
+ * 否则在浅色主题下会冒出一个深色小控件。
+ * 变量定义在 themes/themes.css（:root 上始终有值，不依赖 data-theme）。
+ */
+
+.theme-picker {
+  position: relative;
+}
+
+.theme-picker-toggle {
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong, rgba(167, 201, 255, 0.18));
+  border-radius: var(--radius-control, 12px);
+  background: var(--button-bg, rgba(255, 255, 255, 0.05));
+  color: var(--text-dim, #b8c8e4);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.theme-picker-toggle:hover {
+  border-color: var(--accent-border, rgba(82, 180, 255, 0.5));
+  color: var(--text-strong, #fff);
+}
+
+.theme-picker-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  display: grid;
+  gap: 4px;
+  min-width: 240px;
+  padding: 8px;
+  border: 1px solid var(--border, rgba(167, 201, 255, 0.14));
+  border-radius: var(--radius-card, 18px);
+  background: var(--surface-solid, rgba(14, 21, 36, 0.95));
+  box-shadow: var(--shadow-panel, 0 24px 60px rgba(0, 0, 0, 0.35));
+  backdrop-filter: var(--panel-blur, blur(18px));
+}
+
+.theme-picker-item {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control, 12px);
+  background: transparent;
+  color: var(--text-dim, #b8c8e4);
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-picker-item:hover {
+  border-color: var(--border-faint, rgba(143, 176, 226, 0.12));
+  background: var(--accent-soft, rgba(82, 180, 255, 0.16));
+}
+
+.theme-picker-item.active {
+  border-color: var(--accent-border, rgba(82, 180, 255, 0.5));
+  background: var(--accent-soft, rgba(82, 180, 255, 0.16));
+}
+
+.theme-picker-item-label {
+  font-size: 13px;
+  color: var(--text-strong, #fff);
+}
+
+.theme-picker-item-hint {
+  font-size: 11px;
+  color: var(--text-muted, #8ea4c8);
+}
+
+.theme-picker-note {
+  padding: 6px 10px 2px;
+  color: var(--text-muted, #8ea4c8);
+  font-size: 11px;
+}
+
+.theme-picker-note code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--chip-bg, rgba(255, 255, 255, 0.06));
+  color: var(--accent-text-strong, #cfe8ff);
+}
