@@ -41,7 +41,6 @@ server {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    http2 on;
     server_name your-domain.com www.your-domain.com;
 
     ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
